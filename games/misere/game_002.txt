@@ -1,0 +1,129 @@
+
+==========================================
+  GAME 2 (MISERE -- trying to lose)
+==========================================
+
+-- Turn 1  P1 to roll ----------------------------------
+  State: L10/10  D5/5  S0/0  (P1 misere-win prob: 56.8%)
+  Roll 1: X X C C W W
+  -> keep [X X W W]  reroll [C C]
+  Roll 2: D X X C W W
+  -> keep [D X X W W]  reroll [C]
+  Roll 3: D X X X W W  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [Walk the Plank W=2] You lose 2 lives.
+  [Shipwreck X=3>=3] Opponent gives 3 doubloons to Buried Treasure.
+  After: P1 L8 D7 S0  |  P2 L10 D2 S0
+
+-- Turn 2  P2 to roll ----------------------------------
+  State: L10/8  D2/7  S0/0  (P2 misere-win prob: 29.2%)
+  Roll 1: D D W S S S
+  -> keep [D D W]  reroll [S S S]
+  Roll 2: D D X W W S
+  -> keep [D D X W W S] (no reroll)
+  Roll 3: D D X W W S  (final)
+  Resolution:
+  [Doubloon D=2] You gain 4 doubloons.
+  [X Marks the Spot X=1] You lose 2 doubloons.
+  [Walk the Plank W=2] You lose 2 lives.
+  [Shield S=1] You gain 1 shield (war chest had 30).
+  After: P2 L8 D4 S1  |  P1 L8 D7 S0
+
+-- Turn 3  P1 to roll ----------------------------------
+  State: L8/8  D7/4  S0/1  (P1 misere-win prob: 65.5%)
+  Roll 1: D D W W W S
+  -> keep [D D W W]  reroll [W S]
+  Roll 2: D D D W W W
+  -> keep [D D D W W]  reroll [W]
+  Roll 3: D D D W W S  (final)
+  Resolution:
+  [Doubloon D=3] You gain 6 doubloons.
+  [Walk the Plank W=2] You lose 2 lives.
+  [Shield S=1] You gain 1 shield (war chest had 29).
+  After: P1 L6 D13 S1  |  P2 L8 D4 S1
+
+-- Turn 4  P2 to roll ----------------------------------
+  State: L8/6  D4/13  S1/1  (P2 misere-win prob: 27.0%)
+  Roll 1: D D D J C C
+  -> keep [(none)]  reroll [D D D J C C]
+  Roll 2: D J C W W W
+  -> keep [D J C W W]  reroll [W]
+  Roll 3: D J C W W W  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [Jolly Roger J=1] You steal 2 doubloons from opponent.
+  [Cutlass C=1] Blocked 1 by opponent shields.
+  [Mutiny W=3>=3] Opponent loses 1 life.
+  After: P2 L8 D8 S1  |  P1 L5 D11 S0
+
+-- Turn 5  P1 to roll ----------------------------------
+  State: L5/8  D11/8  S0/1  (P1 misere-win prob: 95.8%)
+  Roll 1: D X X J J C
+  -> keep [X]  reroll [D X J J C]
+  Roll 2: X X X J C W
+  -> keep [X X X J W]  reroll [C]
+  Roll 3: X X X J C W  (final)
+  Resolution:
+  [Jolly Roger J=1] You steal 2 doubloons from opponent.
+  [Cutlass C=1] Blocked 1 by opponent shields.
+  [Walk the Plank W=1] You lose 1 life.
+  [Shipwreck X=3>=3] Opponent gives 3 doubloons to Buried Treasure.
+  After: P1 L4 D13 S0  |  P2 L8 D3 S0
+
+-- Turn 6  P2 to roll ----------------------------------
+  State: L8/4  D3/13  S0/0  (P2 misere-win prob: 5.6%)
+  Roll 1: D X J J W W
+  -> keep [D X J J W W] (no reroll)
+  Roll 2: D X J J W W
+  -> keep [D X J J W W] (no reroll)
+  Roll 3: D X J J W W  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [X Marks the Spot X=1] You lose 2 doubloons.
+  [Jolly Roger J=2] You steal 4 doubloons from opponent.
+  [Walk the Plank W=2] You lose 2 lives.
+  After: P2 L6 D7 S0  |  P1 L4 D9 S0
+
+-- Turn 7  P1 to roll ----------------------------------
+  State: L4/6  D9/7  S0/0  (P1 misere-win prob: 90.1%)
+  Roll 1: D X X C W W
+  -> keep [D X X W W]  reroll [C]
+  Roll 2: D X X C W W
+  -> keep [D X X C W W] (no reroll)
+  Roll 3: D X X C W W  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [X Marks the Spot X=2] You lose 4 doubloons.
+  [Cutlass C=1] -> opponent loses 1 life.
+  [Walk the Plank W=2] You lose 2 lives.
+  After: P1 L2 D7 S0  |  P2 L5 D7 S0
+
+-- Turn 8  P2 to roll ----------------------------------
+  State: L5/2  D7/7  S0/0  (P2 misere-win prob: 5.3%)
+  Roll 1: D X X J C W
+  -> keep [D X X W]  reroll [J C]
+  Roll 2: D X X X W W
+  -> keep [D X X X W W] (no reroll)
+  Roll 3: D X X X W W  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [Walk the Plank W=2] You lose 2 lives.
+  [Shipwreck X=3>=3] Opponent gives 3 doubloons to Buried Treasure.
+  After: P2 L3 D9 S0  |  P1 L2 D4 S0
+
+-- Turn 9  P1 to roll ----------------------------------
+  State: L2/3  D4/9  S0/0  (P1 misere-win prob: 89.6%)
+  Roll 1: D X X C W W
+  -> keep [D X X C W W] (no reroll)
+  Roll 2: D X X C W W
+  -> keep [D X X C W W] (no reroll)
+  Roll 3: D X X C W W  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [X Marks the Spot X=2] You lose 4 doubloons.
+  [Cutlass C=1] -> opponent loses 1 life.
+  [Walk the Plank W=2] You lose 2 lives.
+  -> You are out of lives -- YOU WIN MISERE!
+
+  *** P1 wins the misere game! (in 9 turns) ***

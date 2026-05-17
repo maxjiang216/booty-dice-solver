@@ -1,0 +1,157 @@
+
+==========================================
+  GAME 3
+==========================================
+
+-- Turn 1  P1 to roll ----------------------------------
+  State: L10/10  D5/5  S0/0  (P1 win prob: 63.8%)
+  Roll 1: D J C W S S
+  -> keep [D J]  reroll [C W S S]
+  Roll 2: D X J J W S
+  -> keep [D J J S]  reroll [X W]
+  Roll 3: D J J C C S  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [Jolly Roger J=2] You steal 4 doubloons from opponent.
+  [Cutlass C=2] -> opponent loses 2 lives.
+  [Shield S=1] You gain 1 shield (war chest had 30).
+  After: P1 L10 D11 S1  |  P2 L8 D1 S0
+
+-- Turn 2  P2 to roll ----------------------------------
+  State: L8/10  D1/11  S0/1  (P2 win prob: 32.4%)
+  Roll 1: D X C C W S
+  -> keep [C C S]  reroll [D X W]
+  Roll 2: D C C W S S
+  -> keep [C C S S]  reroll [D W]
+  Roll 3: C C W W S S  (final)
+  Resolution:
+  [Cutlass C=2] Blocked 1 by opponent shields -> opponent loses 1 life.
+  [Walk the Plank W=2] You lose 2 lives.
+  [Shield S=2] You gain 2 shields (war chest had 30).
+  After: P2 L6 D1 S2  |  P1 L9 D11 S0
+
+-- Turn 3  P1 to roll ----------------------------------
+  State: L9/6  D11/1  S0/2  (P1 win prob: 82.2%)
+  Roll 1: D J J J C S
+  -> keep [D C S]  reroll [J J J]
+  Roll 2: D D X C C S
+  -> keep [D D C C S]  reroll [X]
+  Roll 3: D D C C C S  (final)
+  Resolution:
+  [Doubloon D=2] You gain 4 doubloons.
+  [Cutlass C=3] Blocked 2 by opponent shields -> opponent loses 1 life.
+  [Shield S=1] You gain 1 shield (war chest had 30).
+  After: P1 L9 D15 S1  |  P2 L5 D1 S0
+
+-- Turn 4  P2 to roll ----------------------------------
+  State: L5/9  D1/15  S0/1  (P2 win prob: 12.9%)
+  Roll 1: D J J C C S
+  -> keep [D J J S]  reroll [C C]
+  Roll 2: D J J C W S
+  -> keep [D J J S]  reroll [C W]
+  Roll 3: D X J J W S  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [X Marks the Spot X=1] You lose 2 doubloons.
+  [Jolly Roger J=2] You steal 4 doubloons from opponent.
+  [Walk the Plank W=1] You lose 1 life.
+  [Shield S=1] You gain 1 shield (war chest had 29).
+  After: P2 L4 D5 S1  |  P1 L9 D11 S1
+
+-- Turn 5  P1 to roll ----------------------------------
+  State: L9/4  D11/5  S1/1  (P1 win prob: 95.7%)
+  Roll 1: D X X J W W
+  -> keep [D J]  reroll [X X W W]
+  Roll 2: D D J W W S
+  -> keep [D D J]  reroll [W W S]
+  Roll 3: D D D J C S  (final)
+  Resolution:
+  [Doubloon D=3] You gain 6 doubloons.
+  [Jolly Roger J=1] You steal 2 doubloons from opponent.
+  [Cutlass C=1] Blocked 1 by opponent shields.
+  [Shield S=1] You gain 1 shield (war chest had 29).
+  After: P1 L9 D19 S2  |  P2 L4 D3 S0
+
+-- Turn 6  P2 to roll ----------------------------------
+  State: L4/9  D3/19  S0/2  (P2 win prob: 5.8%)
+  Roll 1: D D D W S S
+  -> keep [S]  reroll [D D D W S]
+  Roll 2: D X C S S S
+  -> keep [S S S]  reroll [D X C]
+  Roll 3: D X S S S S  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [X Marks the Spot X=1] You lose 2 doubloons.
+  [Shield S=4] You gain 4 shields (war chest had 28).
+  After: P2 L4 D3 S4  |  P1 L9 D19 S2
+
+-- Turn 7  P1 to roll ----------------------------------
+  State: L9/4  D19/3  S2/4  (P1 win prob: 98.4%)
+  Roll 1: X J J W S S
+  -> keep [J]  reroll [X J W S S]
+  Roll 2: X J J C W S
+  -> keep [J J C S]  reroll [X W]
+  Roll 3: X J J C C S  (final)
+  Resolution:
+  [X Marks the Spot X=1] You lose 2 doubloons.
+  [Jolly Roger J=2] You steal 3 doubloons from opponent.
+  [Cutlass C=2] Blocked 2 by opponent shields.
+  [Shield S=1] You gain 1 shield (war chest had 26).
+  After: P1 L9 D20 S3  |  P2 L4 D0 S2
+
+-- Turn 8  P2 to roll ----------------------------------
+  State: L4/9  D0/20  S2/3  (P2 win prob: 6.0%)
+  Roll 1: D W W W W S
+  -> keep [(none)]  reroll [D W W W W S]
+  Roll 2: D J C W W S
+  -> keep [J S]  reroll [D C W W]
+  Roll 3: D X J J S S  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [X Marks the Spot X=1] You lose 2 doubloons.
+  [Jolly Roger J=2] You steal 4 doubloons from opponent.
+  [Shield S=2] You gain 2 shields (war chest had 25).
+  After: P2 L4 D4 S4  |  P1 L9 D16 S3
+
+-- Turn 9  P1 to roll ----------------------------------
+  State: L9/4  D16/4  S3/4  (P1 win prob: 95.5%)
+  Roll 1: D X J J C C
+  -> keep [D J J C C]  reroll [X]
+  Roll 2: D J J C C C
+  -> keep [D J J C C C] (no reroll)
+  Roll 3: D J J C C C  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [Jolly Roger J=2] You steal 4 doubloons from opponent.
+  [Cutlass C=3] Blocked 3 by opponent shields.
+  After: P1 L9 D22 S3  |  P2 L4 D0 S1
+
+-- Turn 10  P2 to roll ----------------------------------
+  State: L4/9  D0/22  S1/3  (P2 win prob: 2.8%)
+  Roll 1: D X X J C C
+  -> keep [J]  reroll [D X X C C]
+  Roll 2: X X J J C S
+  -> keep [J J S]  reroll [X X C]
+  Roll 3: D J J W S S  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [Jolly Roger J=2] You steal 4 doubloons from opponent.
+  [Walk the Plank W=1] You lose 1 life.
+  [Shield S=2] You gain 2 shields (war chest had 26).
+  After: P2 L3 D6 S3  |  P1 L9 D18 S3
+
+-- Turn 11  P1 to roll ----------------------------------
+  State: L9/3  D18/6  S3/3  (P1 win prob: 98.7%)
+  Roll 1: D D X X X S
+  -> keep [D D]  reroll [X X X S]
+  Roll 2: D D D X J C
+  -> keep [D D D J C]  reroll [X]
+  Roll 3: D D D J C S  (final)
+  Resolution:
+  [Doubloon D=3] You gain 6 doubloons.
+  [Jolly Roger J=1] You steal 2 doubloons from opponent.
+  [Cutlass C=1] Blocked 1 by opponent shields.
+  [Shield S=1] You gain 1 shield (war chest had 25).
+  -> You reach 26 doubloons -- YOU WIN!
+
+  *** P1 wins! (in 11 turns) ***

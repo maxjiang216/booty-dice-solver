@@ -1,0 +1,12 @@
+# Compiled binaries
+solver
+solver_misere
+cli
+sim
+sim_misere
+
+# Precomputed strategy tables (229 MB each — regenerate with ./solver and ./solver_misere)
+*.bin
+
+# Re-run logs (not the reference logs in logs/)
+logs/solver_*_new.log

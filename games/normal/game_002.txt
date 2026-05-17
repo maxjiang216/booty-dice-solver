@@ -1,0 +1,87 @@
+
+==========================================
+  GAME 2
+==========================================
+
+-- Turn 1  P1 to roll ----------------------------------
+  State: L10/10  D5/5  S0/0  (P1 win prob: 63.8%)
+  Roll 1: D D X W S S
+  -> keep [D D]  reroll [X W S S]
+  Roll 2: D D C W S S
+  -> keep [D D C]  reroll [W S S]
+  Roll 3: D D D J C C  (final)
+  Resolution:
+  [Doubloon D=3] You gain 6 doubloons.
+  [Jolly Roger J=1] You steal 2 doubloons from opponent.
+  [Cutlass C=2] -> opponent loses 2 lives.
+  After: P1 L10 D13 S0  |  P2 L8 D3 S0
+
+-- Turn 2  P2 to roll ----------------------------------
+  State: L8/10  D3/13  S0/0  (P2 win prob: 33.7%)
+  Roll 1: X X J C C W
+  -> keep [J]  reroll [X X C C W]
+  Roll 2: D D J C C W
+  -> keep [D D J]  reroll [C C W]
+  Roll 3: D D D D J C  (final)
+  Resolution:
+  [Doubloon D=4] You gain 8 doubloons.
+  [Jolly Roger J=1] You steal 2 doubloons from opponent.
+  [Cutlass C=1] -> opponent loses 1 life.
+  After: P2 L8 D13 S0  |  P1 L9 D11 S0
+
+-- Turn 3  P1 to roll ----------------------------------
+  State: L9/8  D11/13  S0/0  (P1 win prob: 67.5%)
+  Roll 1: D X J C W S
+  -> keep [D J]  reroll [X C W S]
+  Roll 2: D D J J S S
+  -> keep [D D J J]  reroll [S S]
+  Roll 3: D D D J J W  (final)
+  Resolution:
+  [Doubloon D=3] You gain 6 doubloons.
+  [Jolly Roger J=2] You steal 4 doubloons from opponent.
+  [Walk the Plank W=1] You lose 1 life.
+  After: P1 L8 D21 S0  |  P2 L8 D9 S0
+
+-- Turn 4  P2 to roll ----------------------------------
+  State: L8/8  D9/21  S0/0  (P2 win prob: 21.3%)
+  Roll 1: X J J C W S
+  -> keep [J J]  reroll [X C W S]
+  Roll 2: D X J J J S
+  -> keep [D J J J]  reroll [X S]
+  Roll 3: D D J J J W  (final)
+  Resolution:
+  [Doubloon D=2] You gain 4 doubloons.
+  [Jolly Roger J=3] You steal 6 doubloons from opponent.
+  [Walk the Plank W=1] You lose 1 life.
+  After: P2 L7 D19 S0  |  P1 L8 D15 S0
+
+-- Turn 5  P1 to roll ----------------------------------
+  State: L8/7  D15/19  S0/0  (P1 win prob: 63.9%)
+  Roll 1: D X X J C S
+  -> keep [D J]  reroll [X X C S]
+  Roll 2: D D J C W S
+  -> keep [D D J]  reroll [C W S]
+  Roll 3: D D X J C W  (final)
+  Resolution:
+  [Doubloon D=2] You gain 4 doubloons.
+  [X Marks the Spot X=1] You lose 2 doubloons.
+  [Jolly Roger J=1] You steal 2 doubloons from opponent.
+  [Cutlass C=1] -> opponent loses 1 life.
+  [Walk the Plank W=1] You lose 1 life.
+  After: P1 L7 D19 S0  |  P2 L6 D17 S0
+
+-- Turn 6  P2 to roll ----------------------------------
+  State: L6/7  D17/19  S0/0  (P2 win prob: 79.3%)
+  Roll 1: D D D X X J
+  -> keep [D D D J]  reroll [X X]
+  Roll 2: D D D J W S
+  -> keep [D D D J W S] (no reroll)
+  Roll 3: D D D J W S  (final)
+  Resolution:
+  [Doubloon D=3] You gain 6 doubloons.
+  [Jolly Roger J=1] You steal 2 doubloons from opponent.
+  [Walk the Plank W=1] You lose 1 life.
+  [Shield S=1] You gain 1 shield (war chest had 30).
+  -> You reach 25 doubloons -- YOU WIN!
+
+  *** P2 wins! (in 6 turns) ***

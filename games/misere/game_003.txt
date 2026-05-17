@@ -1,0 +1,145 @@
+
+==========================================
+  GAME 3 (MISERE -- trying to lose)
+==========================================
+
+-- Turn 1  P1 to roll ----------------------------------
+  State: L10/10  D5/5  S0/0  (P1 misere-win prob: 56.8%)
+  Roll 1: D J J C W S
+  -> keep [D J J W]  reroll [C S]
+  Roll 2: D D J J J W
+  -> keep [D D J J J W] (no reroll)
+  Roll 3: D D J J J W  (final)
+  Resolution:
+  [Doubloon D=2] You gain 4 doubloons.
+  [Jolly Roger J=3] You steal 5 doubloons from opponent.
+  [Walk the Plank W=1] You lose 1 life.
+  After: P1 L9 D14 S0  |  P2 L10 D0 S0
+
+-- Turn 2  P2 to roll ----------------------------------
+  State: L10/9  D0/14  S0/0  (P2 misere-win prob: 43.9%)
+  Roll 1: J C C W S S
+  -> keep [J W]  reroll [C C S S]
+  Roll 2: D X J J C W
+  -> keep [D X J J W]  reroll [C]
+  Roll 3: D X J J W S  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [X Marks the Spot X=1] You lose 2 doubloons.
+  [Jolly Roger J=2] You steal 4 doubloons from opponent.
+  [Walk the Plank W=1] You lose 1 life.
+  [Shield S=1] You gain 1 shield (war chest had 30).
+  After: P2 L9 D4 S1  |  P1 L9 D10 S0
+
+-- Turn 3  P1 to roll ----------------------------------
+  State: L9/9  D10/4  S0/1  (P1 misere-win prob: 64.8%)
+  Roll 1: D D J W W W
+  -> keep [D D J W W]  reroll [W]
+  Roll 2: D D J C W W
+  -> keep [D D J C W W] (no reroll)
+  Roll 3: D D J C W W  (final)
+  Resolution:
+  [Doubloon D=2] You gain 4 doubloons.
+  [Jolly Roger J=1] You steal 2 doubloons from opponent.
+  [Cutlass C=1] Blocked 1 by opponent shields.
+  [Walk the Plank W=2] You lose 2 lives.
+  After: P1 L7 D16 S0  |  P2 L9 D2 S0
+
+-- Turn 4  P2 to roll ----------------------------------
+  State: L9/7  D2/16  S0/0  (P2 misere-win prob: 29.3%)
+  Roll 1: D X X C W S
+  -> keep [D X X W]  reroll [C S]
+  Roll 2: D X X W W S
+  -> keep [D X X W W S] (no reroll)
+  Roll 3: D X X W W S  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [X Marks the Spot X=2] You lose 4 doubloons.
+  [Walk the Plank W=2] You lose 2 lives.
+  [Shield S=1] You gain 1 shield (war chest had 30).
+  After: P2 L7 D0 S1  |  P1 L7 D16 S0
+
+-- Turn 5  P1 to roll ----------------------------------
+  State: L7/7  D16/0  S0/1  (P1 misere-win prob: 66.6%)
+  Roll 1: D C C W W S
+  -> keep [D W W]  reroll [C C S]
+  Roll 2: D D X W W W
+  -> keep [D D X W W]  reroll [W]
+  Roll 3: D D X C W W  (final)
+  Resolution:
+  [Doubloon D=2] You gain 4 doubloons.
+  [X Marks the Spot X=1] You lose 2 doubloons.
+  [Cutlass C=1] Blocked 1 by opponent shields.
+  [Walk the Plank W=2] You lose 2 lives.
+  After: P1 L5 D18 S0  |  P2 L7 D0 S0
+
+-- Turn 6  P2 to roll ----------------------------------
+  State: L7/5  D0/18  S0/0  (P2 misere-win prob: 25.5%)
+  Roll 1: D X X W W S
+  -> keep [D X X W W]  reroll [S]
+  Roll 2: D X X J W W
+  -> keep [D X X J W W] (no reroll)
+  Roll 3: D X X J W W  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [X Marks the Spot X=2] You lose 2 doubloons.
+  [Jolly Roger J=1] You steal 2 doubloons from opponent.
+  [Walk the Plank W=2] You lose 2 lives.
+  After: P2 L5 D2 S0  |  P1 L5 D16 S0
+
+-- Turn 7  P1 to roll ----------------------------------
+  State: L5/5  D16/2  S0/0  (P1 misere-win prob: 61.2%)
+  Roll 1: X J J C C C
+  -> keep [X]  reroll [J J C C C]
+  Roll 2: D X C C W S
+  -> keep [D X W]  reroll [C C S]
+  Roll 3: D D X X W S  (final)
+  Resolution:
+  [Doubloon D=2] You gain 4 doubloons.
+  [X Marks the Spot X=2] You lose 4 doubloons.
+  [Walk the Plank W=1] You lose 1 life.
+  [Shield S=1] You gain 1 shield (war chest had 30).
+  After: P1 L4 D16 S1  |  P2 L5 D2 S0
+
+-- Turn 8  P2 to roll ----------------------------------
+  State: L5/4  D2/16  S0/1  (P2 misere-win prob: 45.2%)
+  Roll 1: X C C C C S
+  -> keep [(none)]  reroll [X C C C C S]
+  Roll 2: X X J W W S
+  -> keep [X X J W W S] (no reroll)
+  Roll 3: X X J W W S  (final)
+  Resolution:
+  [X Marks the Spot X=2] You lose 2 doubloons.
+  [Jolly Roger J=1] You steal 2 doubloons from opponent.
+  [Walk the Plank W=2] You lose 2 lives.
+  [Shield S=1] You gain 1 shield (war chest had 29).
+  After: P2 L3 D2 S1  |  P1 L4 D14 S1
+
+-- Turn 9  P1 to roll ----------------------------------
+  State: L4/3  D14/2  S1/1  (P1 misere-win prob: 50.6%)
+  Roll 1: D D X C S S
+  -> keep [(none)]  reroll [D D X C S S]
+  Roll 2: D X J C W S
+  -> keep [X J W]  reroll [D C S]
+  Roll 3: D X J W W W  (final)
+  Resolution:
+  [Doubloon D=1] You gain 2 doubloons.
+  [X Marks the Spot X=1] You lose 2 doubloons.
+  [Jolly Roger J=1] You steal 2 doubloons from opponent.
+  [Mutiny W=3>=3] Opponent loses 1 life.
+  After: P1 L4 D16 S1  |  P2 L2 D0 S1
+
+-- Turn 10  P2 to roll ----------------------------------
+  State: L2/4  D0/16  S1/1  (P2 misere-win prob: 97.1%)
+  Roll 1: D D X J J W
+  -> keep [D D W]  reroll [X J J]
+  Roll 2: D D W W S S
+  -> keep [D D W W S S] (no reroll)
+  Roll 3: D D W W S S  (final)
+  Resolution:
+  [Doubloon D=2] You gain 4 doubloons.
+  [Walk the Plank W=2] You lose 2 lives.
+  [Shield S=2] You gain 2 shields (war chest had 28).
+  -> You are out of lives -- YOU WIN MISERE!
+
+  *** P2 wins the misere game! (in 10 turns) ***
