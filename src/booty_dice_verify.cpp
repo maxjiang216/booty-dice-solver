@@ -30,6 +30,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -322,9 +323,11 @@ static constexpr long long NEXT_WIN = -1, NEXT_LOSS = -2;
 // Fills E[combo_keep[di]] with the end value of every final roll, reading
 // next-state values from V (float or double table). If NI is given, it also
 // records the successor: its V-table index, or NEXT_WIN / NEXT_LOSS.
+// With as_error, V holds error bounds instead: the end value is the
+// successor's bound, and 0 for terminal outcomes (which are exact).
 template <class VT>
 void end_values(const LayerState* ls, int cnt, const VT* V, vd (*E)[NV],
-                vl (*NI)[NV] = nullptr) {
+                vl (*NI)[NV] = nullptr, bool as_error = false) {
     vl ml[NV], ol[NV], md[NV], od[NV], ms[NV], os[NV];
     for (int v = 0; v < NV; ++v)
         for (int l = 0; l < LANES; ++l) {
@@ -364,9 +367,9 @@ void end_values(const LayerState* ls, int cnt, const VT* V, vd (*E)[NV],
             idx = (win | loss) != 0 ? vl{} : idx;
             vd g;
             for (int l = 0; l < LANES; ++l) g[l] = (double)V[idx[l]];
-            vd r = 1.0 - g;
-            r = win  != 0 ? vd{} + win_val       : r;
-            r = loss != 0 ? vd{} + (1 - win_val) : r;
+            vd r = as_error ? g : 1.0 - g;
+            r = win  != 0 ? vd{} + (as_error ? 0.0 : win_val)       : r;
+            r = loss != 0 ? vd{} + (as_error ? 0.0 : 1 - win_val)   : r;
             e[v] = r;
         }
     }
@@ -394,9 +397,12 @@ static inline void start_value(vd (*E)[NV], int cnt, double* out) {
 }
 
 // Bellman operator T(V) for up to BATCH states (same DP as the solver).
-void bellman_batch(const LayerState* ls, int cnt, const double* V, double* out) {
+// With as_error it is the error-propagation operator B(e): the largest
+// expected successor error over all keep strategies.
+void bellman_batch(const LayerState* ls, int cnt, const double* V, double* out,
+                   bool as_error = false) {
     alignas(64) static thread_local vd E[924][NV];
-    end_values(ls, cnt, V, E);
+    end_values(ls, cnt, V, E, nullptr, as_error);
     for (int pass = 0; pass < 2; ++pass) {
         average_down(E);
         for (int sz = 1; sz <= NUM_DICE; ++sz)
@@ -408,6 +414,59 @@ void bellman_batch(const LayerState* ls, int cnt, const double* V, double* out) 
             }
     }
     start_value(E, cnt, out);
+}
+
+// T(V)(s) in long double (64-bit mantissa) for one state, so the residual
+// |T(V) - V| is measured with rounding error ~1e-17 instead of ~1e-15.
+static long double turn_value_ld(const State& s, const double* V) {
+    static thread_local long double E[924];
+    static const int fact[NUM_DICE + 1] = {1, 1, 2, 6, 24, 120, 720};
+    const long double win_val = misere ? 0.0L : 1.0L;
+    for (int di = 0; di < (int)all_combos.size(); ++di) {
+        const ComboEffect& c = effects[di];
+        int ml = s.l1 + 1, ol = s.l2 + 1, md = s.d1, od = s.d2, ms = s.s1, os = s.s2;
+        int m_d = md + c.gold;
+        bool win = m_d >= WIN_DOUBLOONS;
+        m_d -= std::min(m_d, c.xlose);
+        int st = std::min(od, c.steal);
+        m_d += st;
+        int o_d = od - st;
+        int ab = std::min(os, c.cut);
+        int o_s = os - ab;
+        int wc = MAX_SHIELDS - ms - o_s;
+        int o_l = ol - (c.cut - ab);
+        win |= o_l <= 0;
+        int m_l = ml - c.plank;
+        int m_s = ms + std::min(wc, c.shield);
+        o_l -= c.mutiny;
+        o_d -= std::min(o_d, c.ship);
+        win |= (m_d >= WIN_DOUBLOONS) || (o_l <= 0);
+        bool loss = (m_l <= 0) && !win;
+        long double r;
+        if (win) r = win_val;
+        else if (loss) r = 1.0L - win_val;
+        else r = 1.0L - (long double)V[state_index(State{o_l - 1, m_l - 1, o_d, m_d, o_s, m_s})];
+        E[combo_keep[di]] = r;
+    }
+    for (int pass = 0; pass < 2; ++pass) {
+        for (int sz = NUM_DICE - 1; sz >= 0; --sz)
+            for (int ki : keeps_by_size[sz]) {
+                const int* ch = add_child[ki];
+                long double acc = 0;
+                for (int f = 0; f < NUM_FACES; ++f) acc += E[ch[f]];
+                E[ki] = acc / 6.0L;
+            }
+        for (int sz = 1; sz <= NUM_DICE; ++sz)
+            for (int ki : keeps_by_size[sz])
+                for (int f = 0; f < NUM_FACES; ++f) E[ki] = std::max(E[ki], E[sub_parent[ki][f]]);
+    }
+    long double acc = 0;
+    for (int di = 0; di < (int)all_combos.size(); ++di) {
+        int ways = fact[NUM_DICE];
+        for (int f = 0; f < NUM_FACES; ++f) ways /= fact[all_combos[di].c[f]];
+        acc += (long double)ways * E[combo_keep[di]];
+    }
+    return acc / 46656.0L;
 }
 
 // Per-decision detail for one batch. Round 0 = keep after the 2nd throw
@@ -598,6 +657,53 @@ static void aug_solve(double* A, double* b, int pp) {
     }
 }
 
+// One Anderson(M_AA) step for a layer of n entries. G_buf/F_buf hold the last
+// evaluations G = F(X) and residuals G - X (slot-major); X[idx_of(i)] receives
+// the mixed iterate, clamped to [lo, hi].
+template <class IdxOf>
+static void anderson_mix(int iter, int n, const std::vector<double>& G_buf,
+                         const std::vector<double>& F_buf, IdxOf idx_of,
+                         std::vector<double>& X, double lo, double hi) {
+    int slot = iter % M_AA;
+    int p = (iter + 1 < M_AA) ? (iter + 1) : M_AA;
+    int slots[M_AA];
+    for (int j = 0; j < p; ++j) slots[j] = (slot - j + M_AA) % M_AA;
+    int pp = p + 1;
+    double A[(M_AA+1)*(M_AA+1)] = {};
+    double rhs[M_AA+1] = {};
+    for (int i = 0; i < p; ++i) {
+        const double* Fi = F_buf.data() + (long long)slots[i] * n;
+        for (int j = i; j < p; ++j) {
+            const double* Fj = F_buf.data() + (long long)slots[j] * n;
+            double dot = 0.0;
+            #pragma omp parallel for schedule(static) reduction(+:dot)
+            for (int k = 0; k < n; ++k) dot += Fi[k] * Fj[k];
+            A[i*pp+j] = A[j*pp+i] = dot;
+        }
+    }
+    double mean_diag = 0.0;
+    for (int i = 0; i < p; ++i) mean_diag += A[i*pp+i];
+    mean_diag /= p;
+    double reg_eps = 1e-10 * (mean_diag > 0.0 ? mean_diag : 1.0);
+    for (int i = 0; i < p; ++i) A[i*pp+i] += reg_eps;
+    for (int i = 0; i < p; ++i) { A[i*pp+p] = 1.0; A[p*pp+i] = 1.0; }
+    rhs[p] = 1.0;
+    aug_solve(A, rhs, pp);
+    double beta_l1 = 0.0;
+    for (int j = 0; j < p; ++j) beta_l1 += std::fabs(rhs[j]);
+    if (!(beta_l1 <= 20.0)) {
+        std::fill(rhs, rhs + pp, 0.0);
+        rhs[0] = 1.0;
+    }
+    #pragma omp parallel for schedule(static)
+    for (int i = 0; i < n; ++i) {
+        double mixed = 0.0;
+        for (int j = 0; j < p; ++j)
+            mixed += rhs[j] * G_buf[(long long)slots[j] * n + i];
+        X[idx_of(i)] = std::min(hi, std::max(lo, mixed));
+    }
+}
+
 // -------------------------------------------------------------------------
 // I/O
 // -------------------------------------------------------------------------
@@ -674,6 +780,10 @@ struct Audit {
 int main(int argc, char** argv) {
     std::string in_path, out_path, save_f64, load_f64;
     bool bounds_only = false;
+    // --tight: refine further, measure residuals in long double, and bound the
+    // error per state (residual accumulated over the rest of the game) instead
+    // of per layer.
+    bool tight = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--misere") misere = true;
@@ -681,11 +791,12 @@ int main(int argc, char** argv) {
         else if (a == "--save-f64" && i + 1 < argc) save_f64 = argv[++i];
         else if (a == "--load-f64" && i + 1 < argc) load_f64 = argv[++i];
         else if (a == "--bounds-only") bounds_only = true;
+        else if (a == "--tight") tight = true;
         else in_path = a;
     }
     if (in_path.empty()) {
         std::cerr << "Usage: " << argv[0] << " TABLE.bin [--misere] [--write OUT.bin]"
-                  << " [--save-f64 V.bin | --load-f64 V.bin] [--bounds-only]" << std::endl
+                  << " [--save-f64 V.bin | --load-f64 V.bin] [--bounds-only] [--tight]" << std::endl
                   << "  --load-f64 skips refinement; the error bound is still re-derived"
                   << " from freshly measured residuals." << std::endl;
         return 1;
@@ -710,7 +821,10 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
-    const int max_iters = load_f64.empty() ? MAX_ITERATIONS : 0;
+    const int max_iters = (load_f64.empty() || tight) ? MAX_ITERATIONS : 0;
+    const double refine_thresh = tight ? 1e-14 : REFINE_THRESH;
+    std::vector<double> R, Eb;  // --tight: per-state residual and proven error bound
+    if (tight) { R.assign(TOTAL_STATES, 0.0); Eb.assign(TOTAL_STATES, 0.0); }
 
     struct Layer { int a, b; };
     std::vector<Layer> layers;
@@ -766,47 +880,10 @@ int main(int argc, char** argv) {
             double* F_slot = F_buf.data() + (long long)slot * n;
             double res = sweep(G_slot);
             ++iters;
-            if (res < REFINE_THRESH) break;
+            if (res < refine_thresh) break;
             #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) F_slot[i] = G_slot[i] - V[lstates[i].idx];
-
-            int p = (iter + 1 < M_AA) ? (iter + 1) : M_AA;
-            int slots[M_AA];
-            for (int j = 0; j < p; ++j) slots[j] = (slot - j + M_AA) % M_AA;
-            int pp = p + 1;
-            double A[(M_AA+1)*(M_AA+1)] = {};
-            double rhs[M_AA+1] = {};
-            for (int i = 0; i < p; ++i) {
-                const double* Fi = F_buf.data() + (long long)slots[i] * n;
-                for (int j = i; j < p; ++j) {
-                    const double* Fj = F_buf.data() + (long long)slots[j] * n;
-                    double dot = 0.0;
-                    #pragma omp parallel for schedule(static) reduction(+:dot)
-                    for (int k = 0; k < n; ++k) dot += Fi[k] * Fj[k];
-                    A[i*pp+j] = A[j*pp+i] = dot;
-                }
-            }
-            double mean_diag = 0.0;
-            for (int i = 0; i < p; ++i) mean_diag += A[i*pp+i];
-            mean_diag /= p;
-            double reg_eps = 1e-10 * (mean_diag > 0.0 ? mean_diag : 1.0);
-            for (int i = 0; i < p; ++i) A[i*pp+i] += reg_eps;
-            for (int i = 0; i < p; ++i) { A[i*pp+p] = 1.0; A[p*pp+i] = 1.0; }
-            rhs[p] = 1.0;
-            aug_solve(A, rhs, pp);
-            double beta_l1 = 0.0;
-            for (int j = 0; j < p; ++j) beta_l1 += std::fabs(rhs[j]);
-            if (!(beta_l1 <= 20.0)) {
-                std::fill(rhs, rhs + pp, 0.0);
-                rhs[0] = 1.0;
-            }
-            #pragma omp parallel for schedule(static)
-            for (int i = 0; i < n; ++i) {
-                double mixed = 0.0;
-                for (int j = 0; j < p; ++j)
-                    mixed += rhs[j] * G_buf[(long long)slots[j] * n + i];
-                V[lstates[i].idx] = std::min(1.0, std::max(0.0, mixed));
-            }
+            anderson_mix(iter, n, G_buf, F_buf, [&](int i) { return lstates[i].idx; }, V, 0.0, 1.0);
         }
 
         // Certified residual of the stored V (re-measured, whatever the loop did).
@@ -815,13 +892,87 @@ int main(int argc, char** argv) {
         eps_layer[a-1][b-1] = eps_layer[b-1][a-1] = eps;
         eps_low = std::max(eps_low, eps);
 
+        std::string tight_note;
+        if (tight) {
+            // Residual in long double; 5e-17 covers its own rounding.
+            double r_max = 0.0;
+            #pragma omp parallel for schedule(dynamic, 64) reduction(max:r_max)
+            for (int i = 0; i < n; ++i) {
+                long double t = turn_value_ld(lstates[i].s, V.data());
+                double ri = (double)fabsl(t - (long double)V[lstates[i].idx]) * (1 + 1e-12) + 5e-17;
+                R[lstates[i].idx] = ri;
+                r_max = std::max(r_max, ri);
+            }
+            // Error bound: the fixed point of e = R + B(e) bounds |V - V*|
+            // (true errors satisfy err <= R + B(err), and B is a contraction).
+            // Plain iteration from 0 approaches it from below; then inflate and
+            // check e >= R + B(e) (a supersolution, hence >= the fixed point).
+            auto bsweep = [&](double* out) {
+                double chg = 0.0;
+                #pragma omp parallel for schedule(dynamic, 4) reduction(max:chg)
+                for (int bi = 0; bi < nbatch; ++bi) {
+                    int i0 = bi * BATCH;
+                    int cnt = std::min(BATCH, n - i0);
+                    bellman_batch(&lstates[i0], cnt, Eb.data(), out + i0, true);
+                    for (int k = 0; k < cnt; ++k) {
+                        out[i0 + k] += R[lstates[i0 + k].idx];
+                        chg = std::max(chg, out[i0 + k] - Eb[lstates[i0 + k].idx]);
+                    }
+                }
+                return chg;
+            };
+            int eit = 0;
+            for (; eit < 200; ++eit) {
+                double* G_slot = G_buf.data() + (long long)(eit % M_AA) * n;
+                double* F_slot = F_buf.data() + (long long)(eit % M_AA) * n;
+                bsweep(G_slot);
+                double res = 0.0;
+                #pragma omp parallel for schedule(static) reduction(max:res)
+                for (int i = 0; i < n; ++i) {
+                    F_slot[i] = G_slot[i] - Eb[lstates[i].idx];
+                    res = std::max(res, std::fabs(F_slot[i]));
+                }
+                if (res < 1e-4 * r_max) {
+                    #pragma omp parallel for schedule(static)
+                    for (int i = 0; i < n; ++i) Eb[lstates[i].idx] = G_slot[i];
+                    break;
+                }
+                anderson_mix(eit, n, G_buf, F_buf, [&](int i) { return lstates[i].idx; }, Eb, 0.0, 1.0);
+            }
+            bool proven = false;
+            for (double delta = 1e-2; delta < 2.0 && !proven; delta *= 4) {
+                #pragma omp parallel for schedule(static)
+                for (int i = 0; i < n; ++i) gv_buf[i] = Eb[lstates[i].idx];  // keep e_k
+                for (int i = 0; i < n; ++i) Eb[lstates[i].idx] = gv_buf[i] * (1 + delta) + delta * r_max;
+                std::vector<double> G(n);
+                double worst = -1.0;  // max of (R + B(e)) * (1 + 1e-12) - e
+                bsweep(G.data());
+                for (int i = 0; i < n; ++i)
+                    worst = std::max(worst, G[i] * (1 + 1e-12) - Eb[lstates[i].idx]);
+                proven = worst <= 0.0;
+                if (!proven)
+                    for (int i = 0; i < n; ++i) Eb[lstates[i].idx] = gv_buf[i];
+            }
+            double e_max = 0.0;
+            if (!proven) {  // fall back to the layer bound, always valid
+                for (int i = 0; i < n; ++i) Eb[lstates[i].idx] = eps;
+                e_max = eps;
+            } else {
+                for (int i = 0; i < n; ++i) e_max = std::max(e_max, Eb[lstates[i].idx]);
+            }
+            std::ostringstream o;
+            o << std::scientific << std::setprecision(2) << "  r_ld<=" << r_max
+              << "  e_max=" << e_max << (proven ? "" : " [FALLBACK]") << "  e-iters=" << eit;
+            tight_note = o.str();
+        }
+
         double elapsed = std::chrono::duration<double>(
             std::chrono::high_resolution_clock::now() - t0).count();
         std::cout << "Layer (" << std::setw(2) << a << "," << std::setw(2) << b << ")"
                   << "  iters=" << std::setw(3) << iters
                   << (iters == MAX_ITERATIONS ? " [CAP]" : "      ")
                   << std::scientific << std::setprecision(2)
-                  << "  residual=" << r << "  |V-V*|<=" << eps
+                  << "  residual=" << r << "  |V-V*|<=" << eps << tight_note
                   << std::fixed << std::setprecision(1)
                   << "  elapsed=" << elapsed << "s" << std::endl;
     }
@@ -867,8 +1018,20 @@ int main(int argc, char** argv) {
                 int i0 = bi * BATCH;
                 int cnt = std::min(BATCH, n - i0);
                 decide_batch(&lstates[i0], cnt, V.data(), *D);
-                for (int i = 0; i < cnt; ++i)
-                    classify_state(*D, i / LANES, i % LANES, lstates[i0 + i].idx, margin, c);
+                for (int i = 0; i < cnt; ++i) {
+                    double m = margin;
+                    if (tight) {
+                        // Every keep value is an average of successor values, so its
+                        // error is at most the largest successor bound.
+                        double e = 0.0;
+                        for (int ki : keeps_by_size[NUM_DICE]) {
+                            long long nx = D->NI[ki][i / LANES][i % LANES];
+                            if (nx >= 0) e = std::max(e, Eb[nx]);
+                        }
+                        m = 2.0 * e + 1e-14;  // + rounding of the double keep values
+                    }
+                    classify_state(*D, i / LANES, i % LANES, lstates[i0 + i].idx, m, c);
+                }
                 auto audit = [&](const std::vector<float>& T, Audit& au) {
                     decide_batch(&lstates[i0], cnt, T.data(), *Df);
                     for (int r = 0; r < 2; ++r)
@@ -911,6 +1074,12 @@ int main(int argc, char** argv) {
               << "V(start) = " << V[state_index(start)]
               << std::scientific << std::setprecision(2) << "  +/- " << eps_start << std::endl;
     std::cout << "Max proven error |V - V*|: " << eps_low << std::endl;
+    if (tight) {
+        double e_all = 0.0;
+        for (const auto& ls : layer_states) for (const auto& q : ls) e_all = std::max(e_all, Eb[q.idx]);
+        std::cout << "Per-state bounds (--tight): |V - V*|(start) <= " << Eb[state_index(start)]
+                  << ", max over states " << e_all << std::endl;
+    }
     long long n_dec = cls.cert + cls.tie_form + cls.unres_zero + cls.unres_pos;
     std::cout << "Decisions checked: " << n_dec << std::endl;
     std::cout << "  proven: unique optimum (gap > 2*err):       " << cls.cert
