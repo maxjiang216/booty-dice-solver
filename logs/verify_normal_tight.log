@@ -1,0 +1,75 @@
+=== Booty Dice Verifier (normal) ===
+Dice combos: 462  Keep sub-multisets: 924
+Transition matrix: 12376 non-zeros (2.9% dense)
+Phase 1: double-precision refinement (Anderson(10))...
+Layer ( 1, 1)  iters=  4        residual=1.07e-13  |V-V*|<=3.90e-12  r_ld<=5.55e-15  e_max=3.87e-14  e-iters=36  elapsed=23.7s
+Layer ( 1, 2)  iters=  4        residual=1.10e-13  |V-V*|<=7.91e-12  r_ld<=8.62e-15  e_max=1.02e-13  e-iters=47  elapsed=57.3s
+Layer ( 2, 2)  iters=  5        residual=1.06e-13  |V-V*|<=1.18e-11  r_ld<=6.31e-15  e_max=1.27e-13  e-iters=46  elapsed=74.6s
+Layer ( 1, 3)  iters=  4        residual=1.08e-13  |V-V*|<=1.57e-11  r_ld<=7.69e-15  e_max=1.00e-13  e-iters=42  elapsed=106.2s
+Layer ( 2, 3)  iters=  5        residual=1.09e-13  |V-V*|<=1.97e-11  r_ld<=8.66e-15  e_max=1.38e-13  e-iters=38  elapsed=137.9s
+Layer ( 3, 3)  iters=  5        residual=1.09e-13  |V-V*|<=2.37e-11  r_ld<=8.90e-15  e_max=1.92e-13  e-iters=43  elapsed=155.1s
+Layer ( 1, 4)  iters=  5        residual=1.06e-13  |V-V*|<=2.76e-11  r_ld<=5.82e-15  e_max=1.00e-13  e-iters=29  elapsed=181.5s
+Layer ( 2, 4)  iters=  5        residual=1.08e-13  |V-V*|<=3.15e-11  r_ld<=7.40e-15  e_max=1.54e-13  e-iters=39  elapsed=213.6s
+Layer ( 3, 4)  iters=  5        residual=1.07e-13  |V-V*|<=3.54e-11  r_ld<=6.15e-15  e_max=1.99e-13  e-iters=46  elapsed=250.7s
+Layer ( 4, 4)  iters=  6        residual=1.05e-13  |V-V*|<=3.92e-11  r_ld<=5.54e-15  e_max=2.07e-13  e-iters=42  elapsed=268.5s
+Layer ( 1, 5)  iters=  5        residual=1.08e-13  |V-V*|<=4.32e-11  r_ld<=8.34e-15  e_max=1.22e-13  e-iters=30  elapsed=295.6s
+Layer ( 2, 5)  iters=  5        residual=1.07e-13  |V-V*|<=4.71e-11  r_ld<=6.50e-15  e_max=1.61e-13  e-iters=35  elapsed=325.4s
+Layer ( 3, 5)  iters=  6        residual=1.07e-13  |V-V*|<=5.10e-11  r_ld<=5.73e-15  e_max=2.00e-13  e-iters=41  elapsed=359.3s
+Layer ( 4, 5)  iters=  5        residual=1.09e-13  |V-V*|<=5.50e-11  r_ld<=7.07e-15  e_max=2.30e-13  e-iters=45  elapsed=396.1s
+Layer ( 5, 5)  iters=  6        residual=1.03e-13  |V-V*|<=5.88e-11  r_ld<=5.42e-15  e_max=2.45e-13  e-iters=42  elapsed=413.7s
+Layer ( 1, 6)  iters=  5        residual=1.08e-13  |V-V*|<=6.27e-11  r_ld<=6.96e-15  e_max=1.19e-13  e-iters=28  elapsed=439.3s
+Layer ( 2, 6)  iters=  6        residual=1.04e-13  |V-V*|<=6.65e-11  r_ld<=6.25e-15  e_max=1.62e-13  e-iters=29  elapsed=466.7s
+Layer ( 3, 6)  iters=  5        residual=1.07e-13  |V-V*|<=7.04e-11  r_ld<=6.49e-15  e_max=2.06e-13  e-iters=38  elapsed=498.9s
+Layer ( 4, 6)  iters=  6        residual=1.06e-13  |V-V*|<=7.43e-11  r_ld<=5.87e-15  e_max=2.44e-13  e-iters=39  elapsed=532.0s
+Layer ( 5, 6)  iters=  5        residual=1.06e-13  |V-V*|<=7.82e-11  r_ld<=6.62e-15  e_max=2.81e-13  e-iters=46  elapsed=569.8s
+Layer ( 6, 6)  iters=  6        residual=1.04e-13  |V-V*|<=8.20e-11  r_ld<=6.09e-15  e_max=2.84e-13  e-iters=40  elapsed=586.7s
+Layer ( 1, 7)  iters=  5        residual=1.08e-13  |V-V*|<=8.59e-11  r_ld<=8.46e-15  e_max=1.31e-13  e-iters=26  elapsed=612.1s
+Layer ( 2, 7)  iters=  5        residual=1.06e-13  |V-V*|<=8.98e-11  r_ld<=6.58e-15  e_max=1.65e-13  e-iters=27  elapsed=638.8s
+Layer ( 3, 7)  iters=  5        residual=1.05e-13  |V-V*|<=9.36e-11  r_ld<=6.30e-15  e_max=2.07e-13  e-iters=32  elapsed=668.6s
+Layer ( 4, 7)  iters=  5        residual=1.06e-13  |V-V*|<=9.75e-11  r_ld<=6.25e-15  e_max=2.58e-13  e-iters=40  elapsed=702.2s
+Layer ( 5, 7)  iters=  5        residual=1.06e-13  |V-V*|<=1.01e-10  r_ld<=6.49e-15  e_max=2.97e-13  e-iters=48  elapsed=739.6s
+Layer ( 6, 7)  iters=  5        residual=1.09e-13  |V-V*|<=1.05e-10  r_ld<=8.11e-15  e_max=3.46e-13  e-iters=45  elapsed=775.9s
+Layer ( 7, 7)  iters=  5        residual=1.07e-13  |V-V*|<=1.09e-10  r_ld<=7.27e-15  e_max=3.73e-13  e-iters=36  elapsed=791.7s
+Layer ( 1, 8)  iters=  5        residual=1.08e-13  |V-V*|<=1.13e-10  r_ld<=7.75e-15  e_max=1.38e-13  e-iters=25  elapsed=815.8s
+Layer ( 2, 8)  iters=  4        residual=1.08e-13  |V-V*|<=1.17e-10  r_ld<=7.75e-15  e_max=1.90e-13  e-iters=35  elapsed=845.4s
+Layer ( 3, 8)  iters=  4        residual=1.09e-13  |V-V*|<=1.21e-10  r_ld<=8.73e-15  e_max=2.42e-13  e-iters=49  elapsed=883.6s
+Layer ( 4, 8)  iters=  5        residual=1.08e-13  |V-V*|<=1.25e-10  r_ld<=6.72e-15  e_max=2.83e-13  e-iters=50  elapsed=922.4s
+Layer ( 5, 8)  iters=  5        residual=1.07e-13  |V-V*|<=1.29e-10  r_ld<=6.38e-15  e_max=3.33e-13  e-iters=45  elapsed=958.4s
+Layer ( 6, 8)  iters=  5        residual=1.06e-13  |V-V*|<=1.33e-10  r_ld<=7.39e-15  e_max=3.77e-13  e-iters=45  elapsed=995.6s
+Layer ( 7, 8)  iters=  5        residual=1.07e-13  |V-V*|<=1.37e-10  r_ld<=6.42e-15  e_max=4.04e-13  e-iters=44  elapsed=1032.2s
+Layer ( 8, 8)  iters=  6        residual=1.06e-13  |V-V*|<=1.41e-10  r_ld<=6.40e-15  e_max=4.06e-13  e-iters=35  elapsed=1048.7s
+Layer ( 1, 9)  iters=  5        residual=1.05e-13  |V-V*|<=1.44e-10  r_ld<=5.94e-15  e_max=1.38e-13  e-iters=26  elapsed=1074.8s
+Layer ( 2, 9)  iters=  4        residual=1.08e-13  |V-V*|<=1.48e-10  r_ld<=7.50e-15  e_max=1.89e-13  e-iters=28  elapsed=1103.3s
+Layer ( 3, 9)  iters=  4        residual=1.08e-13  |V-V*|<=1.52e-10  r_ld<=7.66e-15  e_max=2.58e-13  e-iters=38  elapsed=1136.4s
+Layer ( 4, 9)  iters=  5        residual=1.06e-13  |V-V*|<=1.56e-10  r_ld<=6.42e-15  e_max=3.01e-13  e-iters=42  elapsed=1171.6s
+Layer ( 5, 9)  iters=  5        residual=1.07e-13  |V-V*|<=1.60e-10  r_ld<=6.25e-15  e_max=3.53e-13  e-iters=45  elapsed=1209.0s
+Layer ( 6, 9)  iters=  5        residual=1.06e-13  |V-V*|<=1.64e-10  r_ld<=5.91e-15  e_max=3.94e-13  e-iters=39  elapsed=1243.1s
+Layer ( 7, 9)  iters=  5        residual=1.06e-13  |V-V*|<=1.68e-10  r_ld<=6.22e-15  e_max=4.23e-13  e-iters=45  elapsed=1279.8s
+Layer ( 8, 9)  iters=  5        residual=1.09e-13  |V-V*|<=1.72e-10  r_ld<=6.57e-15  e_max=4.39e-13  e-iters=42  elapsed=1315.5s
+Layer ( 9, 9)  iters=  6        residual=1.06e-13  |V-V*|<=1.76e-10  r_ld<=6.58e-15  e_max=4.52e-13  e-iters=37  elapsed=1331.8s
+Layer ( 1,10)  iters=  4        residual=1.10e-13  |V-V*|<=1.80e-10  r_ld<=1.00e-14  e_max=1.42e-13  e-iters=25  elapsed=1355.6s
+Layer ( 2,10)  iters=  4        residual=1.08e-13  |V-V*|<=1.84e-10  r_ld<=6.28e-15  e_max=1.89e-13  e-iters=27  elapsed=1381.4s
+Layer ( 3,10)  iters=  4        residual=1.07e-13  |V-V*|<=1.88e-10  r_ld<=5.71e-15  e_max=2.66e-13  e-iters=31  elapsed=1410.4s
+Layer ( 4,10)  iters=  4        residual=1.10e-13  |V-V*|<=1.92e-10  r_ld<=9.56e-15  e_max=3.50e-13  e-iters=51  elapsed=1449.8s
+Layer ( 5,10)  iters=  4        residual=1.09e-13  |V-V*|<=1.96e-10  r_ld<=9.62e-15  e_max=4.11e-13  e-iters=45  elapsed=1487.3s
+Layer ( 6,10)  iters=  5        residual=1.07e-13  |V-V*|<=1.99e-10  r_ld<=6.78e-15  e_max=4.33e-13  e-iters=43  elapsed=1524.1s
+Layer ( 7,10)  iters=  5        residual=1.07e-13  |V-V*|<=2.03e-10  r_ld<=6.27e-15  e_max=4.53e-13  e-iters=49  elapsed=1562.8s
+Layer ( 8,10)  iters=  5        residual=1.08e-13  |V-V*|<=2.07e-10  r_ld<=6.65e-15  e_max=4.80e-13  e-iters=42  elapsed=1598.0s
+Layer ( 9,10)  iters=  5        residual=1.07e-13  |V-V*|<=2.11e-10  r_ld<=6.22e-15  e_max=4.94e-13  e-iters=45  elapsed=1634.8s
+Layer (10,10)  iters=  5        residual=1.07e-13  |V-V*|<=2.15e-10  r_ld<=5.96e-15  e_max=5.22e-13  e-iters=35  elapsed=1650.7s
+Wrote refined float64 table to tight_normal_f64.bin
+Phase 2: certifying decisions...
+V(start) = 0.637692577855  +/- 2.15e-10
+Max proven error |V - V*|: 2.15e-10
+Per-state bounds (--tight): |V - V*|(start) <= 4.89e-13, max over states 5.22e-13
+Decisions checked: 28644000000
+  proven: unique optimum (gap > 2*err):       24735255257  (smallest gap 7.44e-14)
+  proven: exact tie (identical value forms):  3908744186
+  unresolved, computed gap exactly 0:         0
+  unresolved, 0 < gap <= 2*err:               557
+      gap in [1e-13, 1e-12): 215
+      gap in [1e-14, 1e-13): 338
+      gap in [1e-15, 1e-14): 4
+  (unresolved decisions: every candidate is within 2*err of optimal)
+Input table   : keeps differing from refined = 4767536, provably suboptimal = 4741656, max win-prob loss = 2.38e-04
+Done. Total time: 2047.9s

@@ -53,7 +53,7 @@ The solver stops at a 1e-4 tolerance, which is close but not exact: some of its 
 ./verify booty_dice_misere.bin --misere --save-f64 booty_dice_misere_f64.bin     # ~458 MB
 ```
 
-See *Verification* in [SOLVER_NOTES.md](SOLVER_NOTES.md) for the method and results.
+Add `--tight` for per-state error bounds (~5e-13 instead of ~1e-9; ~35 min each). See *Verification* in [SOLVER_NOTES.md](SOLVER_NOTES.md) for the method and results.
 
 ---
 

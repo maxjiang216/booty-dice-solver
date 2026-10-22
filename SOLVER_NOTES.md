@@ -199,6 +199,19 @@ The float32 solver tolerance (1e-4) leaves V(start) off by ~1.5e-5 / ~3e-5.
 
 Most unresolved misère cases have gaps of 1e-13 to 1e-20. These are probably ties between *different* successor states that have equal value, which the identical-form test cannot detect.
 
+**Tighter, per-state bounds (`--tight`).** The layer bound charges every state the worst case accumulated over all 55 layers. `--tight` instead:
+1. measures each state's residual in long double, giving r ≈ 6e-15 instead of a 1e-13 floating-point allowance;
+2. bounds the error per state by the fixed point of e = r + B(e). Here B is the error-propagation operator: the largest expected successor error over all keep strategies, computed with the same DP. True errors satisfy err ≤ r + B(err) and B is a contraction within a layer, so any e with e ≥ r + B(e) bounds the error. The verifier solves for e with Anderson mixing, inflates it, and accepts it only after checking that inequality on every state (otherwise it falls back to the layer bound);
+3. uses each state's largest successor bound as its decision margin.
+
+Normal game (`logs/verify_normal_tight.log`): |V − V*| ≤ 5.2e-13 everywhere, so V(start) = 0.637692577855 ± 4.9e-13. Unresolved decisions drop from 156,417 to **557**, all with gaps of 1e-15 to 1e-12.
+
+*The 58 zero-gap cases* were all decisions after the 2nd throw. In each, the top two keeps had identical forms (a proven tie), and a third keep trailed by 1.5e-11 to 1.75e-9, inside the old margin. The ties come from no-op dice:
+- With the opponent at **0 doubloons**, Jolly Roger steals nothing and Shipwreck (X≥3) takes nothing. On rolls like XXXXJS, keeping XXX+J and keeping XXXX are interchangeable (51 cases).
+- With the opponent at **≤2 doubloons** and the **war chest empty**, a second J and extra Shields are both no-ops, so JCSSS ≡ JJCSS on JJCSSS (7 cases).
+
+With the tighter bounds, the third keep is proven worse, and all 58 are proven exact ties.
+
 **Audit of the shipped float32 tables.** Choices made from the solver's tables (tolerance 1e-4) are provably suboptimal in 4,706,923 normal decisions (max loss 2.4e-4 win probability) and 364,566,925 misère decisions (max loss 1.8e-4). Rounding the refined values to float32 still leaves 61K / 4.7M provably wrong choices (loss ≤ 4e-8). Proven-correct advice therefore needs double-precision values. `./verify --save-f64` writes them (format version 2 below), and `./cli` reads them and marks each piece of advice that is proven optimal.
 
 The float32 fresh-roll probabilities in `T_sparse` sum to 1 + ~1e-8. The verifier computes them exactly instead; otherwise the residual floors at ~1e-8 on near-certain-win states.
