@@ -174,6 +174,37 @@ Misère converged faster (380 total iters, 4–10 per layer) because optimal mis
 
 ---
 
+## Verification (`./verify`)
+
+`./verify booty_dice_optimal.bin` (add `--misere` for the misère table) proves how good the solution and every keep decision are. Logs: `logs/verify_normal.log`, `logs/verify_misere.log`.
+
+**Error bound.** Any final roll containing Walk the Plank changes lives (W<3 hurts the roller, W≥3 is Mutiny, Curse hits the opponent), so it leaves the current layer. Whatever the strategy, each die ends on W with probability ≥ (1/6)³, so a turn stays in its layer with probability ≤ ρ = (215/216)⁶ ≈ 0.9726. Each layer's Bellman operator is therefore a contraction, its fixed point is unique, and a layer with residual r satisfies |V − V*| ≤ E_low + r / (1 − ρ), where E_low bounds the lower layers. The verifier re-solves in double precision to r ≈ 5e-13 and gets:
+
+| | Normal | Misère |
+|---|---|---|
+| V(start) | 0.637692577855 ± 1.3e-9 | 0.568262763853 ± 1.1e-9 |
+| Max \|V − V*\| | 1.32e-9 | 1.07e-9 |
+
+The float32 solver tolerance (1e-4) leaves V(start) off by ~1.5e-5 / ~3e-5.
+
+**Decision certificates.** For each of the 28.6B decisions per variant (every state × every roll seen after the 1st or 2nd throw), the verifier checks one of:
+1. *Unique optimum:* the best keep beats every other keep by more than 2·|V − V*|.
+2. *Exact tie:* every keep within that margin has the same exact value form, c + Σ wₙ·V*(n), where outcomes reaching the same successor merge. Equal forms mean equal true values, so each tied keep is optimal. Forms are compared by hashing mod 2⁶¹−1 with two seeds; a false match has probability ~1e-37 per comparison.
+
+| | Normal | Misère |
+|---|---|---|
+| Unique optimum | 24,735,099,455 | 27,610,615,584 |
+| Exact tie | 3,908,744,128 | 969,668,174 |
+| Unresolved (all candidates within 2·err of optimal) | 156,417 | 63,716,242 |
+
+Most unresolved misère cases have gaps of 1e-13 to 1e-20. These are probably ties between *different* successor states that have equal value, which the identical-form test cannot detect.
+
+**Audit of the shipped float32 tables.** Choices made from the solver's tables (tolerance 1e-4) are provably suboptimal in 4,706,923 normal decisions (max loss 2.4e-4 win probability) and 364,566,925 misère decisions (max loss 1.8e-4). Rounding the refined values to float32 still leaves 61K / 4.7M provably wrong choices (loss ≤ 4e-8). Proven-correct advice therefore needs the CLI to read double-precision values.
+
+The float32 fresh-roll probabilities in `T_sparse` sum to 1 + ~1e-8. The verifier computes them exactly instead; otherwise the residual floors at ~1e-8 on near-certain-win states.
+
+---
+
 ## Binary File Format
 
 `booty_dice_optimal.bin` and `booty_dice_misere.bin` share the same layout:

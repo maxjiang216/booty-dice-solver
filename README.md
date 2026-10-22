@@ -29,6 +29,7 @@ make solver_misere
 make cli
 make sim
 make sim_misere
+make verify       # proves error bounds and certifies every keep decision
 make clean        # remove compiled binaries (does NOT delete .bin tables)
 ```
 
