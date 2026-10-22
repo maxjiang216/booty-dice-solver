@@ -1,7 +1,13 @@
 /**
  * Booty Dice Optimal Advisor CLI
  *
- * Loads booty_dice_optimal.bin and advises on optimal dice-freezing decisions.
+ * Loads a strategy table and advises on optimal dice-freezing decisions.
+ *
+ * Usage: ./cli [TABLE.bin] [--misere]
+ *   Version-1 tables (float32, from ./solver) give approximate advice; pass
+ *   --misere with booty_dice_misere.bin. Version-2 tables (float64, from
+ *   ./verify --save-f64) record their variant and proven error bound, and each
+ *   piece of advice says whether the keep is proven optimal.
  *
  * Turn flow: roll (phase 1) → advise K1 → reroll
  *            roll (phase 2) → advise K2 → reroll
@@ -69,7 +75,7 @@ static std::vector<DiceCombo> all_keeps;   // 924 sub-multisets (0..6 dice)
 static int combo_key_map[7*7*7*7*7*7];
 static int keep_key_map [7*7*7*7*7*7];
 
-struct SparseEntry { int di; float prob; };
+struct SparseEntry { int di; double prob; };
 static std::vector<std::vector<SparseEntry>> T_sparse;   // T_sparse[ki]
 static std::vector<std::vector<int>>         valid_keeps; // valid_keeps[di]
 
@@ -91,7 +97,7 @@ void build_dice_tables() {
     for (int i=0; i<(int)all_keeps.size();  ++i) keep_key_map [combo_key(all_keeps[i])]  = i;
 
     int nc=(int)all_combos.size(), nk=(int)all_keeps.size();
-    std::vector<std::vector<float>> T(nk, std::vector<float>(nc, 0.0f));
+    std::vector<std::vector<double>> T(nk, std::vector<double>(nc, 0.0));
     for (int ki=0; ki<nk; ++ki) {
         const DiceCombo& keep = all_keeps[ki];
         int kept=0; for(int f=0;f<NUM_FACES;++f) kept+=keep.c[f];
@@ -101,15 +107,15 @@ void build_dice_tables() {
             DiceCombo res = keep; long long t=out2;
             for (int r=0;r<reroll;++r){res.c[t%NUM_FACES]++;t/=NUM_FACES;}
             int ci = combo_key_map[combo_key(res)];
-            if (ci>=0) T[ki][ci]+=1.0f;
+            if (ci>=0) T[ki][ci]+=1.0;
         }
-        float denom=(float)total;
+        double denom=(double)total;  // exact: counts and 6^k are small integers
         for (int ci=0;ci<nc;++ci) T[ki][ci]/=denom;
     }
     T_sparse.resize(nk);
     for (int ki=0;ki<nk;++ki)
         for (int ci=0;ci<nc;++ci)
-            if (T[ki][ci]>0.0f) T_sparse[ki].push_back({ci, T[ki][ci]});
+            if (T[ki][ci]>0.0) T_sparse[ki].push_back({ci, T[ki][ci]});
 
     valid_keeps.resize(nc);
     for (int ci=0;ci<nc;++ci) {
@@ -153,53 +159,57 @@ inline long long compute_next_idx(const DiceCombo& combo, const State& s) {
 // ─── Optimal-keep advisor ─────────────────────────────────────────────────────
 //
 // Given state S, the combo the player just rolled (combo_di), and how many
-// rerolls remain (2 or 1), returns the best keep sub-multiset index and the
-// expected win probability achievable from this position.
+// rerolls remain (2 or 1), returns the best keep sub-multiset index, the
+// expected win probability achievable from this position, and the value of
+// the best different keep (for certifying the choice).
 
-struct AdviceResult { int keep_ki; float ev; };
+static bool misere = false;  // misère: reaching 25D / killing opp loses, dying wins
 
-AdviceResult advise(const State& s, int combo_di, int rerolls, const float* V) {
+struct AdviceResult { int keep_ki; double ev; double runner_up; };
+
+static AdviceResult best_of(const std::vector<double>& keep_ev, int combo_di) {
+    AdviceResult r{-1, -1.0, -1.0};
+    for (int ki : valid_keeps[combo_di]) {
+        if (keep_ev[ki] > r.ev) { r.runner_up = r.ev; r.ev = keep_ev[ki]; r.keep_ki = ki; }
+        else if (keep_ev[ki] > r.runner_up) r.runner_up = keep_ev[ki];
+    }
+    return r;
+}
+
+AdviceResult advise(const State& s, int combo_di, int rerolls, const double* V) {
     int nc=(int)all_combos.size(), nk=(int)all_keeps.size();
-    std::vector<float> end_val(nc), keep_ev(nk), roll2_ev(nc);
+    std::vector<double> end_val(nc), keep_ev(nk), roll2_ev(nc);
+    const double win_val = misere ? 0.0 : 1.0;
 
     for (int di=0;di<nc;++di) {
         long long n=compute_next_idx(all_combos[di],s);
-        if      (n==IDX_WIN)  end_val[di]=1.0f;
-        else if (n==IDX_LOSS) end_val[di]=0.0f;
-        else                  end_val[di]=1.0f-V[n];
+        if      (n==IDX_WIN)  end_val[di]=win_val;
+        else if (n==IDX_LOSS) end_val[di]=1.0-win_val;
+        else                  end_val[di]=1.0-V[n];
     }
 
     // keep_ev[K] = T[K] · end_val (EV of scoring after one more reroll keeping K)
     for (int ki=0;ki<nk;++ki) {
-        float acc=0.0f;
+        double acc=0.0;
         for (const auto& e:T_sparse[ki]) acc+=e.prob*end_val[e.di];
         keep_ev[ki]=acc;
     }
 
-    if (rerolls==1) {
-        float best=-1.0f; int bki=-1;
-        for (int ki:valid_keeps[combo_di])
-            if (keep_ev[ki]>best){best=keep_ev[ki];bki=ki;}
-        return {bki, best};
-    }
+    if (rerolls==1) return best_of(keep_ev, combo_di);
 
     // rerolls==2: need one more layer
     for (int di=0;di<nc;++di) {
-        if (end_val[di]==1.0f){roll2_ev[di]=1.0f;continue;}
-        float best=0.0f;
+        double best=0.0;
         for (int ki:valid_keeps[di]) if(keep_ev[ki]>best) best=keep_ev[ki];
         roll2_ev[di]=best;
     }
-    std::vector<float> keep_ev1(nk);
+    std::vector<double> keep_ev1(nk);
     for (int ki=0;ki<nk;++ki) {
-        float acc=0.0f;
+        double acc=0.0;
         for (const auto& e:T_sparse[ki]) acc+=e.prob*roll2_ev[e.di];
         keep_ev1[ki]=acc;
     }
-    float best=-1.0f; int bki=-1;
-    for (int ki:valid_keeps[combo_di])
-        if(keep_ev1[ki]>best){best=keep_ev1[ki];bki=ki;}
-    return {bki, best};
+    return best_of(keep_ev1, combo_di);
 }
 
 // ─── Parsing and formatting ───────────────────────────────────────────────────
@@ -291,7 +301,11 @@ Example session:
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 int main(int argc, char* argv[]) {
-    const char* bin_path = (argc > 1) ? argv[1] : "booty_dice_optimal.bin";
+    const char* bin_path = "booty_dice_optimal.bin";
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--misere") misere = true;
+        else bin_path = argv[i];
+    }
 
     std::cout << "=== Booty Dice Optimal Advisor ===" << std::endl;
     std::cout << "Building dice tables... " << std::flush;
@@ -299,7 +313,8 @@ int main(int argc, char* argv[]) {
     std::cout << "done." << std::endl;
 
     std::cout << "Loading " << bin_path << "... " << std::flush;
-    std::vector<float> V(TOTAL_STATES);
+    std::vector<double> V(TOTAL_STATES);
+    double err_bound = -1.0;  // proven |V - V*| for version-2 tables; unknown otherwise
     {
         std::ifstream in(bin_path, std::ios::binary);
         if (!in) {
@@ -313,16 +328,40 @@ int main(int argc, char* argv[]) {
         in.read(reinterpret_cast<char*>(&version), 4);
         in.read(reinterpret_cast<char*>(dims),     sizeof(dims));
         if (magic != 0x424F4F54u) {
-            std::cerr << "\nERROR: Bad magic number — is this really booty_dice_optimal.bin?\n";
+            std::cerr << "\nERROR: Bad magic number — is this really a Booty Dice table?\n";
             return 1;
         }
-        in.read(reinterpret_cast<char*>(V.data()), TOTAL_STATES * sizeof(float));
+        if (version == 1) {
+            std::vector<float> Vf(TOTAL_STATES);
+            in.read(reinterpret_cast<char*>(Vf.data()), TOTAL_STATES * sizeof(float));
+            std::copy(Vf.begin(), Vf.end(), V.begin());
+        } else if (version == 2) {
+            int32_t variant = 0, reserved = 0;
+            in.read(reinterpret_cast<char*>(&variant),   4);
+            in.read(reinterpret_cast<char*>(&reserved),  4);
+            in.read(reinterpret_cast<char*>(&err_bound), 8);
+            if (misere != (variant == 1))
+                std::cout << "(table is " << (variant == 1 ? "misère" : "normal")
+                          << "; using that) " << std::flush;
+            misere = variant == 1;
+            in.read(reinterpret_cast<char*>(V.data()), TOTAL_STATES * sizeof(double));
+        } else {
+            std::cerr << "\nERROR: Unsupported table version " << version << ".\n";
+            return 1;
+        }
         if (!in) {
             std::cerr << "\nERROR: Truncated file — re-run the solver.\n";
             return 1;
         }
     }
     std::cout << "done." << std::endl;
+    std::cout << "Variant: " << (misere ? "misère (both trying to lose)" : "normal") << "\n";
+    if (err_bound >= 0.0)
+        std::cout << "Values proven accurate to ±" << std::scientific << std::setprecision(2)
+                  << err_bound << std::defaultfloat << "; advice is marked when proven optimal.\n";
+    else
+        std::cout << "float32 table: advice is approximate. For proven advice, use a table\n"
+                     "from ./verify --save-f64 (see SOLVER_NOTES.md, Verification).\n";
     std::cout << "Type 'help' for commands.\n" << std::endl;
 
     State game  = {9, 9, 5, 5, 0, 0};  // L=10/10, D=5/5, S=0/0
@@ -383,9 +422,9 @@ int main(int argc, char* argv[]) {
                       << "  My shields: "   << game.s1
                       << "   Opp shields: " << game.s2 << "\n";
             if (state_valid(game)) {
-                float v = V[state_index(game)];
+                double v = V[state_index(game)];
                 std::cout << "  Win probability (start of turn): "
-                          << (v*100.0f) << "%\n";
+                          << (v*100.0) << "%\n";
             }
             std::cout << "  Roll phase: " << phase << " / 3\n";
             continue;
@@ -442,16 +481,31 @@ int main(int argc, char* argv[]) {
                 print_keep_advice(combo, keep);
                 std::cout << std::fixed << std::setprecision(2)
                           << "  Expected win prob (optimal from here): "
-                          << (ar.ev*100.0f) << "%\n";
+                          << (ar.ev*100.0) << "%\n";
+                if (err_bound >= 0.0) {
+                    // Keep values inherit the table's error bound, so a margin above
+                    // 2*err (plus rounding slack) cannot be overturned by the true values.
+                    double gap = ar.ev - ar.runner_up;
+                    std::cout << std::scientific << std::setprecision(2);
+                    if (gap > 2.0 * err_bound + 1e-13)
+                        std::cout << "  Proven optimal: beats the next-best keep by " << gap << "\n";
+                    else
+                        std::cout << "  Near-tie: next-best keep is within " << gap
+                                  << "; this keep is proven within " << 2.0 * err_bound
+                                  << " of optimal\n";
+                    std::cout << std::defaultfloat;
+                }
                 phase++;
             } else {
                 // Phase 3: score the final dice
                 long long nidx = compute_next_idx(combo, game);
                 if (nidx==IDX_WIN) {
-                    std::cout << "  → YOU WIN! Game over.\n";
+                    std::cout << (misere ? "  → You reached 25 doubloons or sank the opponent: you LOSE (misère). Game over.\n"
+                                         : "  → YOU WIN! Game over.\n");
                     game={9,9,5,5,0,0}; phase=1;
                 } else if (nidx==IDX_LOSS) {
-                    std::cout << "  → You lose. Game over.\n";
+                    std::cout << (misere ? "  → Out of lives: YOU WIN (misère)! Game over.\n"
+                                         : "  → You lose. Game over.\n");
                     game={9,9,5,5,0,0}; phase=1;
                 } else {
                     // nidx is state_index of the next state from opponent's perspective
@@ -462,8 +516,8 @@ int main(int argc, char* argv[]) {
                     State my_view = {opp_view.l2, opp_view.l1,
                                      opp_view.d2, opp_view.d1,
                                      opp_view.s2, opp_view.s1};
-                    float opp_win = V[nidx];
-                    float my_win  = 1.0f - opp_win;
+                    double opp_win = V[nidx];
+                    double my_win  = 1.0 - opp_win;
                     std::cout << std::fixed << std::setprecision(1);
                     std::cout << "  After your turn:\n"
                               << "    My lives: "    << (my_view.l1+1)
@@ -473,7 +527,7 @@ int main(int argc, char* argv[]) {
                               << "  Opp doubloons: " << my_view.d2
                               << "  Opp shields: "   << my_view.s2 << "\n"
                               << "  Your win probability going forward: "
-                              << (my_win*100.0f) << "%\n"
+                              << (my_win*100.0) << "%\n"
                               << "  (Opponent's turn — use 'flip' to advise them, "
                                  "then 'flip' again when they finish)\n";
                     // Advance to opponent's turn

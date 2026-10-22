@@ -199,7 +199,7 @@ The float32 solver tolerance (1e-4) leaves V(start) off by ~1.5e-5 / ~3e-5.
 
 Most unresolved misère cases have gaps of 1e-13 to 1e-20. These are probably ties between *different* successor states that have equal value, which the identical-form test cannot detect.
 
-**Audit of the shipped float32 tables.** Choices made from the solver's tables (tolerance 1e-4) are provably suboptimal in 4,706,923 normal decisions (max loss 2.4e-4 win probability) and 364,566,925 misère decisions (max loss 1.8e-4). Rounding the refined values to float32 still leaves 61K / 4.7M provably wrong choices (loss ≤ 4e-8). Proven-correct advice therefore needs the CLI to read double-precision values.
+**Audit of the shipped float32 tables.** Choices made from the solver's tables (tolerance 1e-4) are provably suboptimal in 4,706,923 normal decisions (max loss 2.4e-4 win probability) and 364,566,925 misère decisions (max loss 1.8e-4). Rounding the refined values to float32 still leaves 61K / 4.7M provably wrong choices (loss ≤ 4e-8). Proven-correct advice therefore needs double-precision values. `./verify --save-f64` writes them (format version 2 below), and `./cli` reads them and marks each piece of advice that is proven optimal.
 
 The float32 fresh-roll probabilities in `T_sparse` sum to 1 + ~1e-8. The verifier computes them exactly instead; otherwise the residual floors at ~1e-8 on near-certain-win states.
 
@@ -221,6 +221,21 @@ Offset  Size  Content
 Total file size: 32 + 10×10×25×25×31×31×4 = 240,250,032 bytes (~229 MB).
 
 Invalid entries (s1+s2 > 30) are stored but should never be read; they are left at the initial value 0.5.
+
+**Version 2** (float64, written by `./verify --save-f64`) adds a 16-byte block after the dimensions and stores doubles:
+
+```
+Offset  Size  Content
+0       4     Magic: 0x424F4F54 ("BOOT")
+4       4     Version: 2
+8       24    Dimensions: int[6] = {10, 10, 25, 25, 31, 31}
+32      4     Variant: int32, 0 = normal, 1 = misère
+36      4     Reserved (0)
+40      8     Proven bound on |V − V*|: float64
+48      480M  float64 V-table, same index order
+```
+
+Total file size: 48 + 60,062,500×8 = 480,500,048 bytes (~458 MB). The CLI and simulators read both versions.
 
 ---
 

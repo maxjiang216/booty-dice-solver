@@ -14,7 +14,9 @@
  * RHO = (215/216)^6. For a layer with Bellman residual r = max|T(V) - V| and
  * lower layers already accurate to E_low, |V - V*| <= E_low + r / (1 - RHO).
  *
- * Usage: ./verify booty_dice_optimal.bin [--misere] [--write refined.bin]
+ * Usage: ./verify booty_dice_optimal.bin [--misere] [--save-f64 refined.bin]
+ *   --save-f64 writes the refined values as a version-2 (float64) table that
+ *   records the variant and the proven error bound; ./cli reads it.
  */
 
 #include <algorithm>
@@ -613,6 +615,42 @@ static bool load_table(const std::string& path, std::vector<float>& V) {
     return (bool)in;
 }
 
+// Version 2: float64 values, plus variant (0 normal, 1 misère) and the proven
+// bound on |V - V*| so readers can tell which decisions are certified.
+struct HeaderV2Extra { int32_t variant; int32_t reserved; double err_bound; };
+
+static void save_table_f64(const std::string& path, const std::vector<double>& V,
+                           double err_bound) {
+    std::ofstream out(path, std::ios::binary);
+    uint32_t magic = 0x424F4F54, version = 2;
+    int dims[6] = {DIM_L, DIM_L, DIM_D, DIM_D, DIM_S, DIM_S};
+    HeaderV2Extra extra{misere ? 1 : 0, 0, err_bound};
+    out.write(reinterpret_cast<const char*>(&magic), 4);
+    out.write(reinterpret_cast<const char*>(&version), 4);
+    out.write(reinterpret_cast<const char*>(dims), sizeof(dims));
+    out.write(reinterpret_cast<const char*>(&extra), sizeof(extra));
+    out.write(reinterpret_cast<const char*>(V.data()), TOTAL_STATES * sizeof(double));
+}
+
+// Reads a version-2 table (or a bare float64 dump from earlier verifier runs).
+static bool load_table_f64(const std::string& path, std::vector<double>& V) {
+    std::ifstream in(path, std::ios::binary);
+    uint32_t magic = 0, version = 0;
+    in.read(reinterpret_cast<char*>(&magic), 4);
+    in.read(reinterpret_cast<char*>(&version), 4);
+    if (magic == 0x424F4F54) {
+        int dims[6];
+        HeaderV2Extra extra;
+        in.read(reinterpret_cast<char*>(dims), sizeof(dims));
+        in.read(reinterpret_cast<char*>(&extra), sizeof(extra));
+        if (!in || version != 2 || extra.variant != (misere ? 1 : 0)) return false;
+    } else {
+        in.seekg(0);
+    }
+    in.read(reinterpret_cast<char*>(V.data()), TOTAL_STATES * sizeof(double));
+    return (bool)in;
+}
+
 static void save_table(const std::string& path, const std::vector<float>& V) {
     std::ofstream out(path, std::ios::binary);
     uint32_t magic = 0x424F4F54, version = 1;
@@ -635,17 +673,19 @@ struct Audit {
 
 int main(int argc, char** argv) {
     std::string in_path, out_path, save_f64, load_f64;
+    bool bounds_only = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--misere") misere = true;
         else if (a == "--write" && i + 1 < argc) out_path = argv[++i];
         else if (a == "--save-f64" && i + 1 < argc) save_f64 = argv[++i];
         else if (a == "--load-f64" && i + 1 < argc) load_f64 = argv[++i];
+        else if (a == "--bounds-only") bounds_only = true;
         else in_path = a;
     }
     if (in_path.empty()) {
         std::cerr << "Usage: " << argv[0] << " TABLE.bin [--misere] [--write OUT.bin]"
-                  << " [--save-f64 V.f64 | --load-f64 V.f64]" << std::endl
+                  << " [--save-f64 V.bin | --load-f64 V.bin] [--bounds-only]" << std::endl
                   << "  --load-f64 skips refinement; the error bound is still re-derived"
                   << " from freshly measured residuals." << std::endl;
         return 1;
@@ -665,9 +705,7 @@ int main(int argc, char** argv) {
     }
     std::vector<double> V(Vf.begin(), Vf.end());
     if (!load_f64.empty()) {
-        std::ifstream in(load_f64, std::ios::binary);
-        in.read(reinterpret_cast<char*>(V.data()), TOTAL_STATES * sizeof(double));
-        if (!in) {
+        if (!load_table_f64(load_f64, V)) {
             std::cerr << "Cannot read " << load_f64 << std::endl;
             return 1;
         }
@@ -789,9 +827,8 @@ int main(int argc, char** argv) {
     }
 
     if (!save_f64.empty()) {
-        std::ofstream out(save_f64, std::ios::binary);
-        out.write(reinterpret_cast<const char*>(V.data()), TOTAL_STATES * sizeof(double));
-        std::cout << "Wrote refined float64 values to " << save_f64 << std::endl;
+        save_table_f64(save_f64, V, eps_low);
+        std::cout << "Wrote refined float64 table to " << save_f64 << std::endl;
     }
 
     std::vector<float> Vr;
@@ -799,6 +836,12 @@ int main(int argc, char** argv) {
         Vr.assign(V.begin(), V.end());
         save_table(out_path, Vr);
         std::cout << "Wrote refined float32 table to " << out_path << std::endl;
+    }
+
+    if (bounds_only) {
+        std::cout << "Max proven error |V - V*|: " << std::scientific << std::setprecision(2)
+                  << eps_low << std::endl;
+        return 0;
     }
 
     // Phase 2: certify every decision and audit the float32 table(s).
