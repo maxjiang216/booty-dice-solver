@@ -390,7 +390,15 @@ int main(int argc, char* argv[]) {
         in.read(reinterpret_cast<char*>(&magic),  4);
         in.read(reinterpret_cast<char*>(&version),4);
         in.read(reinterpret_cast<char*>(dims),    sizeof(dims));
-        in.read(reinterpret_cast<char*>(V.data()),TOTAL_STATES*sizeof(float));
+        if(version==2){
+            // float64 table from ./verify --save-f64: skip variant + error bound
+            char extra[16]; in.read(extra,sizeof(extra));
+            std::vector<double> Vd(TOTAL_STATES);
+            in.read(reinterpret_cast<char*>(Vd.data()),TOTAL_STATES*sizeof(double));
+            std::copy(Vd.begin(),Vd.end(),V.begin());
+        } else {
+            in.read(reinterpret_cast<char*>(V.data()),TOTAL_STATES*sizeof(float));
+        }
         if(!in){ std::cerr<<"Truncated file.\n"; return 1; }
     }
     std::cout << "done.\n";

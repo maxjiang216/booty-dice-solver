@@ -139,7 +139,6 @@ void build_dice_tables() {
 
 struct SparseEntry { int di; float prob; };
 static std::vector<std::vector<SparseEntry>> T_sparse;  // T_sparse[ki]
-static std::vector<std::vector<int>> valid_keeps;        // valid_keeps[di]
 static int empty_keep_idx = -1;
 
 void build_transition_matrix() {
@@ -189,19 +188,6 @@ void build_transition_matrix() {
     empty_keep_idx = keep_key_map[combo_key(empty)];
     assert(empty_keep_idx >= 0);
 
-    // valid_keeps[di] = all ki where all_keeps[ki] ⊆ all_combos[di]
-    valid_keeps.resize(nc);
-    for (int ci = 0; ci < nc; ++ci) {
-        const DiceCombo& combo = all_combos[ci];
-        for (int ki = 0; ki < nk; ++ki) {
-            const DiceCombo& keep = all_keeps[ki];
-            bool ok = true;
-            for (int f = 0; f < NUM_FACES; ++f)
-                if (keep.c[f] > combo.c[f]) { ok = false; break; }
-            if (ok) valid_keeps[ci].push_back(ki);
-        }
-    }
-
     std::cout << "Transition matrix: " << nnz << " non-zeros ("
               << std::fixed << std::setprecision(1)
               << 100.0 * nnz / ((long long)nk * nc) << "% dense)" << std::endl;
@@ -211,165 +197,161 @@ void build_transition_matrix() {
 // DICE RESOLUTION
 // -------------------------------------------------------------------------
 
-// Sentinels returned by compute_next_idx for terminal outcomes.
-static constexpr long long IDX_WIN  = -1;  // current player wins
-static constexpr long long IDX_LOSS = -2;  // current player loses
+// Each combo's effect reduced to per-face parameters, so resolution becomes
+// branch-free min/subtract arithmetic that vectorizes across states.
+//
+// Resolution order (see SOLVER_NOTES.md): Doubloon (win at >= 25), X Marks
+// (X < 3), Jolly Roger, Cutlass (win if opponent dies), Walk the Plank (W < 3),
+// Shield, Mutiny (W >= 3), Shipwreck (X >= 3). Blackbeard's Curse overrides
+// everything; it is encoded as mutiny = 2 (opponent loses 2 lives) and
+// ship = 5 (opponent gives up to 5 doubloons), which yields the same result.
+struct ComboEffect { int gold, xlose, steal, cut, plank, shield, mutiny, ship; };
+static ComboEffect effects[462];
 
-// Returns the flat V-table index of the next state (opponent's perspective),
-// or IDX_WIN / IDX_LOSS for terminal outcomes. No V access — pure arithmetic.
-inline long long compute_next_idx(const DiceCombo& combo, const State& s) {
-    int cD = combo.c[F_D], cX = combo.c[F_X], cJ = combo.c[F_J];
-    int cC = combo.c[F_C], cW = combo.c[F_W], cS = combo.c[F_S];
-
-    int ml = s.l1 + 1, ol = s.l2 + 1;
-    int md = s.d1,     od = s.d2;
-    int ms = s.s1,     os = s.s2;
-    int wc = MAX_SHIELDS - ms - os;
-
-    if (cD==1 && cX==1 && cJ==1 && cC==1 && cW==1 && cS==1) {
-        // Blackbeard's Curse: overrides all other effects
-        ol -= 2;
-        int give = od < 5 ? od : 5;
-        od -= give;
-    } else {
-        // Doubloon — immediate win if >= 25
-        md += 2 * cD;
-        if (md >= WIN_DOUBLOONS) return IDX_WIN;
-
-        // X Marks the Spot (only if not Shipwreck)
-        if (cX > 0 && cX < 3) {
-            int lose = md < 2*cX ? md : 2*cX;
-            md -= lose;
+void build_effects() {
+    for (int di = 0; di < (int)all_combos.size(); ++di) {
+        const int* c = all_combos[di].c;
+        ComboEffect& e = effects[di];
+        if (c[F_D]==1 && c[F_X]==1 && c[F_J]==1 && c[F_C]==1 && c[F_W]==1 && c[F_S]==1) {
+            e = {0, 0, 0, 0, 0, 0, 2, 5};
+            continue;
         }
-
-        // Jolly Roger
-        {
-            int steal = od < 2*cJ ? od : 2*cJ;
-            md += steal;
-            od -= steal;
-        }
-
-        // Cutlass — immediate win if opponent dies
-        if (cC > 0) {
-            int ab = os < cC ? os : cC;
-            os -= ab;
-            wc += ab;
-            ol -= (cC - ab);
-            if (ol <= 0) return IDX_WIN;
-        }
-
-        // Walk the Plank (only if not Mutiny)
-        if (cW > 0 && cW < 3) ml -= cW;
-
-        // Shield
-        {
-            int take = wc < cS ? wc : cS;
-            ms += take;
-        }
-
-        // Mutiny
-        if (cW >= 3) ol -= (cW - 2);
-
-        // Shipwreck (deferred past Jolly Roger)
-        if (cX >= 3) {
-            int give = od < cX ? od : cX;
-            od -= give;
-        }
+        e.gold   = 2 * c[F_D];
+        e.xlose  = c[F_X] < 3 ? 2 * c[F_X] : 0;
+        e.steal  = 2 * c[F_J];
+        e.cut    = c[F_C];
+        e.plank  = c[F_W] < 3 ? c[F_W] : 0;
+        e.shield = c[F_S];
+        e.mutiny = c[F_W] >= 3 ? c[F_W] - 2 : 0;
+        e.ship   = c[F_X] >= 3 ? c[F_X] : 0;
     }
-
-    ml = std::max(ml, 0);
-    ol = std::max(ol, 0);
-    md = std::max(md, 0);
-    od = std::max(od, 0);
-
-    if (md >= WIN_DOUBLOONS || ol <= 0) return IDX_WIN;
-    if (ml <= 0)                        return IDX_LOSS;
-
-    State next { ol-1, ml-1, od, md, os, ms };
-    return state_index(next);
 }
 
 // -------------------------------------------------------------------------
-// WITHIN-TURN DP
+// KEEP LATTICE
 // -------------------------------------------------------------------------
 
-float compute_turn_value(const State& s, const float* V) {
-    int nc = (int)all_combos.size();
-    int nk = (int)all_keeps.size();
+// Keeps form a lattice under adding/removing one die. Rerolling dice one at a
+// time gives keep_ev[K] = (1/6) Σ_f keep_ev[K + e_f], and the best keep within
+// a roll d is a running max over K - e_f. Both replace the 12,376-entry
+// sparse transition matrix and subset scans with ~6 ops per keep.
+static int add_child[924][NUM_FACES];   // K + e_f  (unused when |K| == 6)
+static int sub_parent[924][NUM_FACES];  // K - e_f  (K itself when c_f == 0)
+static int combo_keep[462];             // keep index of the full 6-dice combo
+static std::vector<int> keeps_by_size[NUM_DICE + 1];
+static float roll_prob[462];            // P(fresh roll of 6 dice == combo)
 
-    static thread_local std::vector<float>     end_val, keep_ev, roll2_ev, roll1_ev;
-    static thread_local std::vector<long long> nxt;
-    end_val.resize(nc);
-    keep_ev.resize(nk);
-    roll2_ev.resize(nc);
-    roll1_ev.resize(nc);
-    nxt.resize(nc);
-
-    // Step 1a: compute next_idx for each combo and prefetch V entries.
-    // Issuing all prefetches before any V read hides DRAM latency: by the
-    // time the gather loop starts, most cache lines are already in flight.
-    for (int di = 0; di < nc; ++di) {
-        long long n = compute_next_idx(all_combos[di], s);
-        nxt[di] = n;
-        if (n >= 0)
-            __builtin_prefetch(V + n, 0, 1);  // read, L3 hint
-    }
-
-    // Step 1b: gather — V entries should have arrived from DRAM by now.
-    for (int di = 0; di < nc; ++di) {
-        long long n = nxt[di];
-        if      (n == IDX_WIN)  end_val[di] = 1.0f;
-        else if (n == IDX_LOSS) end_val[di] = 0.0f;
-        else                    end_val[di] = 1.0f - V[n];
-    }
-
-    // Step 2: keep_ev2[K] = sparse T[K] · end_val  (expected value if we keep K and reroll)
-    for (int ki = 0; ki < nk; ++ki) {
-        float acc = 0.0f;
-        for (const auto& e : T_sparse[ki])
-            acc += e.prob * end_val[e.di];
-        keep_ev[ki] = acc;
-    }
-
-    // Step 3: roll2_ev[d] = best expected value with 1 reroll left after seeing d.
-    // Shortcut: if end_val[d] == 1.0, keeping everything wins immediately.
-    for (int di = 0; di < nc; ++di) {
-        if (end_val[di] == 1.0f) {
-            roll2_ev[di] = 1.0f;
-            continue;
+void build_lattice() {
+    for (int ki = 0; ki < (int)all_keeps.size(); ++ki) {
+        const DiceCombo& k = all_keeps[ki];
+        int sz = 0;
+        for (int f = 0; f < NUM_FACES; ++f) sz += k.c[f];
+        keeps_by_size[sz].push_back(ki);
+        for (int f = 0; f < NUM_FACES; ++f) {
+            DiceCombo t = k; t.c[f]++;
+            add_child[ki][f] = sz < NUM_DICE ? keep_key_map[combo_key(t)] : -1;
+            t = k; t.c[f]--;
+            sub_parent[ki][f] = k.c[f] > 0 ? keep_key_map[combo_key(t)] : ki;
         }
-        float best = 0.0f;
-        for (int ki : valid_keeps[di])
-            if (keep_ev[ki] > best) best = keep_ev[ki];
-        roll2_ev[di] = best;
     }
+    for (int di = 0; di < (int)all_combos.size(); ++di)
+        combo_keep[di] = keep_key_map[combo_key(all_combos[di])];
+    for (const auto& e : T_sparse[empty_keep_idx]) roll_prob[e.di] = e.prob;
+}
 
-    // Step 4: keep_ev1[K] = sparse T[K] · roll2_ev
-    for (int ki = 0; ki < nk; ++ki) {
-        float acc = 0.0f;
-        for (const auto& e : T_sparse[ki])
-            acc += e.prob * roll2_ev[e.di];
-        keep_ev[ki] = acc;
-    }
+// -------------------------------------------------------------------------
+// WITHIN-TURN DP (SIMD across states)
+// -------------------------------------------------------------------------
 
-    // Step 5: roll1_ev[d] = best expected value with 2 rerolls left after seeing d.
-    for (int di = 0; di < nc; ++di) {
-        if (roll2_ev[di] == 1.0f) {
-            roll1_ev[di] = 1.0f;
-            continue;
+static constexpr int LANES = 8;              // floats per vector (AVX2)
+static constexpr int NV    = 2;              // vectors per batch
+static constexpr int BATCH = LANES * NV;     // states evaluated together
+
+typedef float vf __attribute__((vector_size(4 * LANES)));
+typedef int   vi __attribute__((vector_size(4 * LANES)));
+static inline vf vmax(vf a, vf b) { return a > b ? a : b; }
+static inline vi vmin(vi a, vi b) { return a < b ? a : b; }
+
+struct LayerState { long long idx; State s; };
+
+// Evaluates the turn value of up to BATCH states at once; every step of the
+// within-turn DP is identical across states, so each lane is one state.
+void turn_values_batch(const LayerState* ls, int cnt, const float* V, float* out) {
+    alignas(64) static thread_local vf E[924][NV];
+
+    vi ml[NV], ol[NV], md[NV], od[NV], ms[NV], os[NV];
+    for (int v = 0; v < NV; ++v)
+        for (int l = 0; l < LANES; ++l) {
+            int i = v * LANES + l;
+            const State& s = ls[i < cnt ? i : 0].s;
+            ml[v][l] = s.l1 + 1; ol[v][l] = s.l2 + 1;
+            md[v][l] = s.d1;     od[v][l] = s.d2;
+            ms[v][l] = s.s1;     os[v][l] = s.s2;
         }
-        float best = 0.0f;
-        for (int ki : valid_keeps[di])
-            if (keep_ev[ki] > best) best = keep_ev[ki];
-        roll1_ev[di] = best;
+
+    // Step 1: end value of each final roll (opponent's perspective after flip).
+    for (int di = 0; di < (int)all_combos.size(); ++di) {
+        const ComboEffect& c = effects[di];
+        vf* e = E[combo_keep[di]];
+        for (int v = 0; v < NV; ++v) {
+            vi m_d = md[v] + c.gold;
+            vi win = m_d >= WIN_DOUBLOONS;
+            m_d -= vmin(m_d, vi{} + c.xlose);
+            vi st = vmin(od[v], vi{} + c.steal);
+            m_d += st;
+            vi o_d = od[v] - st;
+            vi ab  = vmin(os[v], vi{} + c.cut);
+            vi o_s = os[v] - ab;
+            vi wc  = MAX_SHIELDS - ms[v] - o_s;
+            vi o_l = ol[v] - (c.cut - ab);
+            win |= o_l <= 0;
+            vi m_l = ml[v] - c.plank;
+            vi m_s = ms[v] + vmin(wc, vi{} + c.shield);
+            o_l -= c.mutiny;
+            o_d -= vmin(o_d, vi{} + c.ship);
+            win |= (m_d >= WIN_DOUBLOONS) | (o_l <= 0);
+            vi loss = (m_l <= 0) & ~win;
+
+            // Next state is (o_l, m_l, o_d, m_d, o_s, m_s); fits in int32.
+            vi idx = ((((((o_l - 1) * DIM_L + (m_l - 1)) * DIM_D + o_d) * DIM_D + m_d)
+                       * DIM_S + o_s) * DIM_S + m_s);
+            idx = (win | loss) != 0 ? vi{} : idx;
+            vf g;
+            for (int l = 0; l < LANES; ++l) g[l] = V[idx[l]];
+            vf r = 1.0f - g;
+            r = win  != 0 ? vf{} + 1.0f : r;
+            r = loss != 0 ? vf{} : r;
+            e[v] = r;
+        }
     }
 
-    // Step 6: start of turn EV = T[empty] · roll1_ev (roll all 6 fresh)
-    float new_v = 0.0f;
-    for (const auto& e : T_sparse[empty_keep_idx])
-        new_v += e.prob * roll1_ev[e.di];
+    // Steps 2-5: two rerolls, each = expectation over the rerolled dice, then
+    // the best keep given the dice just seen.
+    for (int pass = 0; pass < 2; ++pass) {
+        for (int sz = NUM_DICE - 1; sz >= 0; --sz)
+            for (int ki : keeps_by_size[sz]) {
+                const int* ch = add_child[ki];
+                for (int v = 0; v < NV; ++v)
+                    E[ki][v] = ((E[ch[0]][v] + E[ch[1]][v]) + (E[ch[2]][v] + E[ch[3]][v])
+                              + (E[ch[4]][v] + E[ch[5]][v])) * (1.0f / 6.0f);
+            }
+        for (int sz = 1; sz <= NUM_DICE; ++sz)
+            for (int ki : keeps_by_size[sz]) {
+                const int* p = sub_parent[ki];
+                for (int v = 0; v < NV; ++v)
+                    E[ki][v] = vmax(vmax(vmax(E[ki][v], E[p[0]][v]), vmax(E[p[1]][v], E[p[2]][v])),
+                                    vmax(vmax(E[p[3]][v], E[p[4]][v]), E[p[5]][v]));
+            }
+    }
 
-    return new_v;
+    // Step 6: start of turn EV = expectation over a fresh roll of all 6 dice.
+    vf acc[NV] = {};
+    for (int di = 0; di < (int)all_combos.size(); ++di) {
+        const vf* e = E[combo_keep[di]];
+        float p = roll_prob[di];
+        for (int v = 0; v < NV; ++v) acc[v] += p * e[v];
+    }
+    for (int i = 0; i < cnt; ++i) out[i] = acc[i / LANES][i % LANES];
 }
 
 
@@ -415,6 +397,8 @@ int main() {
 
     build_dice_tables();
     build_transition_matrix();
+    build_effects();
+    build_lattice();
 
     std::cout << "Allocating V table ("
               << TOTAL_STATES * sizeof(float) / (1024*1024) << " MB)..." << std::endl;
@@ -439,7 +423,6 @@ int main() {
     std::vector<float> G_buf((long long)M_AA * MAX_N_LAYER);  // Bellman evaluations
     std::vector<float> F_buf((long long)M_AA * MAX_N_LAYER);  // residuals g(V) - V
 
-    struct LayerState { long long idx; State s; };
     std::vector<LayerState> lstates;
     lstates.reserve(MAX_N_LAYER);
 
@@ -482,14 +465,20 @@ int main() {
 
             // Jacobi sweep: evaluate g(V) for every layer state in parallel.
             float max_bellman_delta = 0.0f;
-            #pragma omp parallel for schedule(dynamic, 64) reduction(max:max_bellman_delta)
-            for (int i = 0; i < n; ++i) {
-                float gv  = compute_turn_value(lstates[i].s, V.data());
-                float old = V[lstates[i].idx];
-                G_slot[i] = gv;
-                F_slot[i] = gv - old;
-                float d = gv - old; if (d < 0) d = -d;
-                if (d > max_bellman_delta) max_bellman_delta = d;
+            int nbatch = (n + BATCH - 1) / BATCH;
+            #pragma omp parallel for schedule(dynamic, 4) reduction(max:max_bellman_delta)
+            for (int bi = 0; bi < nbatch; ++bi) {
+                int i0 = bi * BATCH;
+                int cnt = std::min(BATCH, n - i0);
+                float gv[BATCH];
+                turn_values_batch(&lstates[i0], cnt, V.data(), gv);
+                for (int k = 0; k < cnt; ++k) {
+                    float old = V[lstates[i0 + k].idx];
+                    G_slot[i0 + k] = gv[k];
+                    F_slot[i0 + k] = gv[k] - old;
+                    float d = std::fabs(gv[k] - old);
+                    if (d > max_bellman_delta) max_bellman_delta = d;
+                }
             }
             ++layer_iters;
             if (max_bellman_delta < CONVERGENCE_THRESH) break;
@@ -508,6 +497,7 @@ int main() {
                 for (int j = i; j < p; ++j) {
                     const float* Fj = F_buf.data() + (long long)slots[j] * n;
                     double dot = 0.0;
+                    #pragma omp parallel for schedule(static) reduction(+:dot)
                     for (int k = 0; k < n; ++k) dot += (double)Fi[k] * Fj[k];
                     A[i*pp+j] = A[j*pp+i] = dot;
                 }

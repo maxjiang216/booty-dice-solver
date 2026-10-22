@@ -6,8 +6,8 @@ Computes the exact optimal strategy for the 2-player board game **Booty Dice** v
 
 | Variant | First-mover win rate | Compute time | Iterations |
 |---------|---------------------|--------------|------------|
-| Normal  | **63.8%**           | ~25 min      | 655 total layer-iters |
-| Misère  | **56.8%**           | ~16 min      | 380 total layer-iters |
+| Normal  | **63.8%**           | ~3 min (4 cores) | 655 total layer-iters |
+| Misère  | **56.8%**           | ~1.7 min (4 cores) | 380 total layer-iters |
 
 The 63.8% first-mover advantage is inherent to the game: going first lets you collect doubloons and attack before the opponent can respond. No equal starting-shield configuration reduces this below ~61.7%; starting the second player with 11 doubloons instead of 5 brings it to ~50.3%.
 
@@ -29,12 +29,13 @@ make solver_misere
 make cli
 make sim
 make sim_misere
+make verify       # proves error bounds and certifies every keep decision
 make clean        # remove compiled binaries (does NOT delete .bin tables)
 ```
 
 ---
 
-## Step 1 — Solve (run once, ~25 min each)
+## Step 1 — Solve (run once, ~2–3 min each on 4 cores)
 
 ```bash
 ./solver           # writes booty_dice_optimal.bin  (~229 MB)
@@ -43,16 +44,31 @@ make clean        # remove compiled binaries (does NOT delete .bin tables)
 
 Progress is printed layer by layer (55 layers total). The solver uses all available CPU cores via OpenMP.
 
+### Optional — proven-optimal tables (~13 min each on 4 cores)
+
+The solver stops at a 1e-4 tolerance, which is close but not exact: some of its keep choices are provably suboptimal (by at most ~0.02% win probability). `./verify` re-solves in double precision, proves an error bound, certifies every decision, and can write a float64 table for the CLI:
+
+```bash
+./verify booty_dice_optimal.bin --save-f64 booty_dice_optimal_f64.bin            # ~458 MB
+./verify booty_dice_misere.bin --misere --save-f64 booty_dice_misere_f64.bin     # ~458 MB
+```
+
+Add `--tight` for per-state error bounds (~5e-13 instead of ~1e-9; ~35 min each). See *Verification* in [SOLVER_NOTES.md](SOLVER_NOTES.md) for the method and results.
+
 ---
 
 ## Step 2a — Interactive CLI Advisor
 
 ```bash
-./cli booty_dice_optimal.bin        # normal game
-./cli booty_dice_misere.bin         # misère game
+./cli booty_dice_optimal_f64.bin             # normal game, proven advice
+./cli booty_dice_misere_f64.bin              # misère game, proven advice
+./cli booty_dice_optimal.bin                 # normal game, float32 table (approximate)
+./cli booty_dice_misere.bin --misere         # misère game, float32 table (approximate)
 ```
 
 The advisor tells you the optimal dice to freeze at each roll and your win probability. State is always from the **current player's** perspective.
+
+With a float64 table from `./verify`, each piece of advice also says whether it is **proven optimal** (it beats the next-best keep by more than twice the proven error bound) or a near-tie (proven within ~2e-9 of optimal). Float64 tables record their variant. Float32 tables do not, so pass `--misere` for the misère table.
 
 ### CLI Commands
 
@@ -112,11 +128,12 @@ Each game is written to `game_001.txt`, `game_002.txt`, etc. in the current dire
 | `src/booty_dice_cli.cpp` | Interactive CLI advisor |
 | `src/booty_dice_sim.cpp` | Normal game simulator |
 | `src/booty_dice_sim_misere.cpp` | Misère game simulator |
+| `src/booty_dice_verify.cpp` | Error-bound proof, decision certificates, float64 table writer |
 | `booty_dice_optimal.bin` | Precomputed normal strategy table (229 MB, not in git) |
 | `booty_dice_misere.bin` | Precomputed misère strategy table (229 MB, not in git) |
 | `games/normal/` | Sample normal game transcripts |
 | `games/misere/` | Sample misère game transcripts |
-| `logs/` | Solver convergence logs |
+| `logs/` | Solver convergence and verification logs |
 
 ---
 

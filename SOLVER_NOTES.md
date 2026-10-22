@@ -75,7 +75,18 @@ Step 5: roll1_ev[d] = max_{K ⊆ d} keep_ev[K]    (best keep after first roll)
 Step 6: V_new(S) = Σ_d T[∅][d] · roll1_ev[d]   (expected value rolling all 6 fresh)
 ```
 
-T is a sparse 924×462 matrix (12,376 non-zeros, 2.9% dense) precomputed once at startup.
+T is a sparse 924×462 matrix (12,376 non-zeros, 2.9% dense). The solver never multiplies by it directly; see *Fast Turn Kernel* below.
+
+### Fast Turn Kernel
+
+The original implementation ran steps 2–5 literally (sparse matvecs plus a scan of every sub-keep of every roll), ~46 µs per state single-threaded. The current kernel computes the same values ~27× faster (~1.7 µs/state):
+
+1. **Reroll one die at a time.** Keeps form a lattice under adding a die. Because dice are independent, `keep_ev[K] = (1/6) Σ_f keep_ev[K + e_f]`, evaluated from size-5 keeps down to the empty keep, with size-6 keeps holding the roll values. That's 462×6 adds instead of 12,376 multiply-adds.
+2. **Running max over sub-keeps.** `best[K] = max(keep_ev[K], max_f best[K − e_f])`, evaluated from small keeps up, gives `max_{K ⊆ d} keep_ev[K]` at every roll d in 923×6 maxes instead of 12,376 compare-and-branch steps.
+3. **Branch-free resolution.** Each combo's effect is precomputed as per-face parameters (gold, X loss, steal, cutlass, plank, shield, mutiny, shipwreck); Blackbeard's Curse becomes mutiny=2, shipwreck=5. Resolving a state is then min/subtract arithmetic with no early returns.
+4. **SIMD across states.** All of the above is identical for every state, so 16 states go through it together as two 8-wide float/int vectors (GCC vector extensions; AVX2 or wider).
+
+Over all 31M states of the converged table, the new kernel matches the original to within 5.5e-6 (float summation order), and both solvers reproduce the original per-layer iteration counts and V values exactly.
 
 ---
 
@@ -121,7 +132,7 @@ Three fixes:
 
 3. **Relaxed convergence threshold:** 1e-4 instead of 1e-6. A 0.01% error in win probability has zero effect on strategy (the optimal keep is unchanged for any state where the win probabilities of competing options differ by more than the rounding error). With ρ = 0.999 and threshold 1e-4, Anderson(10) converges in ~10–12 iterations instead of ~1,000.
 
-**Result:** All 55 layers converge in 7–13 iterations each. Total compute: 1,469s (~24.5 min) on a 20-thread machine.
+**Result:** All 55 layers converge in 7–13 iterations each. Total compute: 172s on 4 cores with the fast turn kernel (originally 1,469s on 20 threads).
 
 ---
 
@@ -129,12 +140,12 @@ Three fixes:
 
 ```
 main()
- ├─ build_dice_tables()          enumerate 462 combos, 924 keeps; build T_sparse
+ ├─ build_dice_tables()          enumerate 462 combos, 924 keeps
  ├─ build_transition_matrix()    sparse T[keep → combo] with multinomial probs
  ├─ for each layer {a,b}:
  │   ├─ build lstates[]          flat list of (flat_index, State) for this layer
  │   └─ for iter = 0..MAX_ITERS:
- │       ├─ Jacobi sweep (OMP)   G_slot[i] = compute_turn_value(s, V)
+ │       ├─ Jacobi sweep (OMP)   G_slot[i] = turn_values_batch(16 states, V)
  │       │                       F_slot[i] = G_slot[i] − V[idx]
  │       ├─ check convergence    max|F| < 1e-4 → break
  │       ├─ build Gram matrix    H[i][j] = ⟨F[slot_i], F[slot_j]⟩  (serial)
@@ -145,7 +156,7 @@ main()
 
 **Memory layout:** Anderson history buffers are slot-major: `G_buf[slot * n + i]`. This gives sequential writes during the Jacobi sweep (one slot at a time) and acceptable scatter-gather during the mixing step.
 
-**OpenMP:** the Jacobi sweep is the bottleneck (462 V lookups + ~40K FLOPs per state). Each layer iteration for a 620K-state layer takes ~2.2s on 20 threads.
+**OpenMP:** the Jacobi sweep is the bottleneck (462 V lookups + ~11K vector ops per 16-state batch), parallelised over batches. The Anderson Gram-matrix dot products are parallelised too. Each layer iteration for a 620K-state layer takes ~0.3s on 4 cores.
 
 ---
 
@@ -160,6 +171,52 @@ main()
 | **Total** | **655** | Across all 55 layers |
 
 Misère converged faster (380 total iters, 4–10 per layer) because optimal misère play seeks life-loss, increasing the probability of transitions that exit the current layer.
+
+---
+
+## Verification (`./verify`)
+
+`./verify booty_dice_optimal.bin` (add `--misere` for the misère table) proves how good the solution and every keep decision are. Logs: `logs/verify_normal.log`, `logs/verify_misere.log`.
+
+**Error bound.** Any final roll containing Walk the Plank changes lives (W<3 hurts the roller, W≥3 is Mutiny, Curse hits the opponent), so it leaves the current layer. Whatever the strategy, each die ends on W with probability ≥ (1/6)³, so a turn stays in its layer with probability ≤ ρ = (215/216)⁶ ≈ 0.9726. Each layer's Bellman operator is therefore a contraction, its fixed point is unique, and a layer with residual r satisfies |V − V*| ≤ E_low + r / (1 − ρ), where E_low bounds the lower layers. The verifier re-solves in double precision to r ≈ 5e-13 and gets:
+
+| | Normal | Misère |
+|---|---|---|
+| V(start) | 0.637692577855 ± 1.3e-9 | 0.568262763853 ± 1.1e-9 |
+| Max \|V − V*\| | 1.32e-9 | 1.07e-9 |
+
+The float32 solver tolerance (1e-4) leaves V(start) off by ~1.5e-5 / ~3e-5.
+
+**Decision certificates.** For each of the 28.6B decisions per variant (every state × every roll seen after the 1st or 2nd throw), the verifier checks one of:
+1. *Unique optimum:* the best keep beats every other keep by more than 2·|V − V*|.
+2. *Exact tie:* every keep within that margin has the same exact value form, c + Σ wₙ·V*(n), where outcomes reaching the same successor merge. Equal forms mean equal true values, so each tied keep is optimal. Forms are compared by hashing mod 2⁶¹−1 with two seeds; a false match has probability ~1e-37 per comparison.
+
+| | Normal | Misère |
+|---|---|---|
+| Unique optimum | 24,735,099,455 | 27,610,615,584 |
+| Exact tie | 3,908,744,128 | 969,668,174 |
+| Unresolved (all candidates within 2·err of optimal) | 156,417 | 63,716,242 |
+
+Most unresolved misère cases have gaps of 1e-13 to 1e-20. These are probably ties between *different* successor states that have equal value, which the identical-form test cannot detect.
+
+**Tighter, per-state bounds (`--tight`).** The layer bound charges every state the worst case accumulated over all 55 layers. `--tight` instead:
+1. measures each state's residual in long double, giving r ≈ 6e-15 instead of a 1e-13 floating-point allowance;
+2. bounds the error per state by the fixed point of e = r + B(e). Here B is the error-propagation operator: the largest expected successor error over all keep strategies, computed with the same DP. True errors satisfy err ≤ r + B(err) and B is a contraction within a layer, so any e with e ≥ r + B(e) bounds the error. The verifier solves for e with Anderson mixing, inflates it, and accepts it only after checking that inequality on every state (otherwise it falls back to the layer bound);
+3. uses each state's largest successor bound as its decision margin.
+
+Normal game (`logs/verify_normal_tight.log`): |V − V*| ≤ 5.2e-13 everywhere, so V(start) = 0.637692577855 ± 4.9e-13. Unresolved decisions drop from 156,417 to **557**, all with gaps of 1e-15 to 1e-12.
+
+Misère (`logs/verify_misere_tight.log`): |V − V*| ≤ 5.6e-13, so V(start) = 0.568262763853 ± 5.3e-13. Unresolved decisions drop from 63,716,242 to **5,130,588**: 191,676 with computed gap exactly 0 and 4,938,912 with gaps of 1e-18 to 1e-12. These likely need equal-value (rather than identical-form) tie arguments.
+
+*The 58 zero-gap cases* were all decisions after the 2nd throw. In each, the top two keeps had identical forms (a proven tie), and a third keep trailed by 1.5e-11 to 1.75e-9, inside the old margin. The ties come from no-op dice:
+- With the opponent at **0 doubloons**, Jolly Roger steals nothing and Shipwreck (X≥3) takes nothing. On rolls like XXXXJS, keeping XXX+J and keeping XXXX are interchangeable (51 cases).
+- With the opponent at **≤2 doubloons** and the **war chest empty**, a second J and extra Shields are both no-ops, so JCSSS ≡ JJCSS on JJCSSS (7 cases).
+
+With the tighter bounds, the third keep is proven worse, and all 58 are proven exact ties.
+
+**Audit of the shipped float32 tables.** Choices made from the solver's tables (tolerance 1e-4) are provably suboptimal in 4,706,923 normal decisions (max loss 2.4e-4 win probability) and 364,566,925 misère decisions (max loss 1.8e-4). Rounding the refined values to float32 still leaves 61K / 4.7M provably wrong choices (loss ≤ 4e-8). Proven-correct advice therefore needs double-precision values. `./verify --save-f64` writes them (format version 2 below), and `./cli` reads them and marks each piece of advice that is proven optimal.
+
+The float32 fresh-roll probabilities in `T_sparse` sum to 1 + ~1e-8. The verifier computes them exactly instead; otherwise the residual floors at ~1e-8 on near-certain-win states.
 
 ---
 
@@ -179,6 +236,21 @@ Offset  Size  Content
 Total file size: 32 + 10×10×25×25×31×31×4 = 240,250,032 bytes (~229 MB).
 
 Invalid entries (s1+s2 > 30) are stored but should never be read; they are left at the initial value 0.5.
+
+**Version 2** (float64, written by `./verify --save-f64`) adds a 16-byte block after the dimensions and stores doubles:
+
+```
+Offset  Size  Content
+0       4     Magic: 0x424F4F54 ("BOOT")
+4       4     Version: 2
+8       24    Dimensions: int[6] = {10, 10, 25, 25, 31, 31}
+32      4     Variant: int32, 0 = normal, 1 = misère
+36      4     Reserved (0)
+40      8     Proven bound on |V − V*|: float64
+48      480M  float64 V-table, same index order
+```
+
+Total file size: 48 + 60,062,500×8 = 480,500,048 bytes (~458 MB). The CLI and simulators read both versions.
 
 ---
 
@@ -241,8 +313,8 @@ The subtlest reversal: **Jolly Roger is bad in misère** — you're taking doubl
 
 ## Compute Environment
 
-- Machine: 20-thread x86-64, Linux
+- Machine: 4-core x86-64 (AVX-512 capable), Linux
 - Compiler: g++ -O3 -std=c++17 -march=native -fopenmp
-- Normal solver: 1,469s (~24.5 min), 655 total layer-iters
-- Misère solver: 948s (~15.8 min), 380 total layer-iters
+- Normal solver: 172s (~2.9 min), 655 total layer-iters (originally 1,469s on 20 threads)
+- Misère solver: 102s (~1.7 min), 380 total layer-iters (originally 948s on 20 threads)
 - RAM peak: ~700 MB (229 MB V-table + ~50 MB Anderson buffers + misc)
