@@ -259,6 +259,7 @@ static double roll_prob[462];           // P(fresh roll of 6 dice == combo), exa
 // Taking the running max one face at a time merges two disjoint sets at each
 // step (they differ in c_f), so the top two values stay exact without ids.
 static std::vector<std::pair<int, int>> face_steps[NUM_FACES];
+static std::vector<int> sub_keeps[462];  // every keep K ⊆ combo d
 
 void build_lattice() {
     for (int ki = 0; ki < (int)all_keeps.size(); ++ki) {
@@ -287,6 +288,13 @@ void build_lattice() {
         for (int sz = 1; sz <= NUM_DICE; ++sz)
             for (int ki : keeps_by_size[sz])
                 if (all_keeps[ki].c[f] > 0) face_steps[f].push_back({ki, sub_parent[ki][f]});
+    for (int di = 0; di < (int)all_combos.size(); ++di)
+        for (int ki = 0; ki < (int)all_keeps.size(); ++ki) {
+            bool ok = true;
+            for (int f = 0; f < NUM_FACES; ++f)
+                if (all_keeps[ki].c[f] > all_combos[di].c[f]) { ok = false; break; }
+            if (ok) sub_keeps[di].push_back(ki);
+        }
 }
 
 // -------------------------------------------------------------------------
@@ -307,10 +315,14 @@ struct LayerState { long long idx; State s; };
 
 static bool misere = false;
 
+static constexpr long long NEXT_WIN = -1, NEXT_LOSS = -2;
+
 // Fills E[combo_keep[di]] with the end value of every final roll, reading
-// next-state values from V (float or double table).
+// next-state values from V (float or double table). If NI is given, it also
+// records the successor: its V-table index, or NEXT_WIN / NEXT_LOSS.
 template <class VT>
-void end_values(const LayerState* ls, int cnt, const VT* V, vd (*E)[NV]) {
+void end_values(const LayerState* ls, int cnt, const VT* V, vd (*E)[NV],
+                vl (*NI)[NV] = nullptr) {
     vl ml[NV], ol[NV], md[NV], od[NV], ms[NV], os[NV];
     for (int v = 0; v < NV; ++v)
         for (int l = 0; l < LANES; ++l) {
@@ -344,6 +356,9 @@ void end_values(const LayerState* ls, int cnt, const VT* V, vd (*E)[NV]) {
             vl loss = (m_l <= 0) & ~win;
             vl idx = ((((((o_l - 1) * DIM_L + (m_l - 1)) * DIM_D + o_d) * DIM_D + m_d)
                        * DIM_S + o_s) * DIM_S + m_s);
+            if (NI)
+                NI[combo_keep[di]][v] = win != 0 ? vl{} + NEXT_WIN
+                                      : loss != 0 ? vl{} + NEXT_LOSS : idx;
             idx = (win | loss) != 0 ? vl{} : idx;
             vd g;
             for (int l = 0; l < LANES; ++l) g[l] = (double)V[idx[l]];
@@ -403,11 +418,12 @@ struct Decisions {
     vd B1[2][924][NV];
     vd B2[2][924][NV];
     vl ID[2][924][NV];
+    vl NI[924][NV];  // successor of each final roll (size-6 keeps only)
 };
 
 template <class VT>
 void decide_batch(const LayerState* ls, int cnt, const VT* V, Decisions& D) {
-    end_values(ls, cnt, V, D.E);
+    end_values(ls, cnt, V, D.E, D.NI);
     for (int r = 0; r < 2; ++r) {
         average_down(D.E);
         auto& KE = D.KE[r]; auto& B1 = D.B1[r]; auto& B2 = D.B2[r]; auto& ID = D.ID[r];
@@ -428,6 +444,125 @@ void decide_batch(const LayerState* ls, int cnt, const VT* V, Decisions& D) {
                 }
         for (int ki : keeps_by_size[NUM_DICE])
             for (int v = 0; v < NV; ++v) D.E[ki][v] = B1[ki][v];
+    }
+}
+
+// -------------------------------------------------------------------------
+// SYMBOLIC TIE PROOFS
+// -------------------------------------------------------------------------
+
+// A keep's true value is a linear form: c * 1 + sum_n w_n * V*(n) over
+// successor states n, with exact probability weights (outcomes reaching the
+// same successor merge). Two keeps with identical forms have equal true values
+// whatever V* is, so a numerical tie between them is an exact tie and every
+// tied keep is optimal.
+//
+// Forms are compared by hashing: each atom (the constant, each V*(n), each
+// unresolved best-value R(d)) gets a pseudo-random value mod the prime
+// P = 2^61 - 1, and a form hashes to its weighted sum. Distinct forms collide
+// with probability 1/P per comparison (Schwartz-Zippel); two independent
+// seeds make that 1/P^2 ~ 2e-37.
+static constexpr uint64_t PRIME = (1ULL << 61) - 1;
+static constexpr int NSEED = 2;
+
+static inline uint64_t addm(uint64_t a, uint64_t b) {
+    uint64_t s = a + b;
+    return s >= PRIME ? s - PRIME : s;
+}
+static inline uint64_t subm(uint64_t a, uint64_t b) { return a >= b ? a - b : a + PRIME - b; }
+static inline uint64_t mulm(uint64_t a, uint64_t b) {
+    unsigned __int128 z = (unsigned __int128)a * b;
+    uint64_t lo = (uint64_t)z & PRIME, hi = (uint64_t)(z >> 61);
+    return addm(lo, hi);
+}
+static uint64_t powm(uint64_t a, uint64_t e) {
+    uint64_t r = 1;
+    for (; e; e >>= 1, a = mulm(a, a)) if (e & 1) r = mulm(r, a);
+    return r;
+}
+static inline uint64_t mix64(uint64_t x) {  // splitmix64 finaliser
+    x += 0x9E3779B97F4A7C15ULL;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+    return x ^ (x >> 31);
+}
+static inline uint64_t atom_hash(uint64_t domain, uint64_t id, int seed) {
+    return mix64(mix64(domain * 0x51ED27F1ULL + seed) ^ id) % PRIME;
+}
+static constexpr uint64_t DOM_CONST = 1, DOM_STATE = 2, DOM_OPAQUE = 3;
+
+struct Classes {
+    long long cert = 0;       // best keep beats every other keep by > 2*err
+    long long tie_form = 0;   // all keeps within 2*err have identical forms
+    long long unres_zero = 0; // unresolved, computed gap exactly 0
+    long long unres_pos = 0;  // unresolved, 0 < gap <= 2*err
+    long long gap_hist[20] = {};  // unres_pos by floor(-log10(gap))
+    double min_cert_gap = 1.0;
+};
+
+// Classifies both decisions rounds of one state (lane v,l of batch D).
+static void classify_state(const Decisions& D, int v, int l, long long sidx,
+                           double margin, Classes& c) {
+    static thread_local uint64_t H[924][NSEED], R[462][NSEED];
+    static uint64_t inv6 = powm(6, PRIME - 2);
+    const double win_val = misere ? 0.0 : 1.0;
+    int nc = (int)all_combos.size();
+
+    for (int di = 0; di < nc; ++di) {
+        int k = combo_keep[di];
+        long long n = D.NI[k][v][l];
+        for (int j = 0; j < NSEED; ++j) {
+            uint64_t one = atom_hash(DOM_CONST, 0, j);
+            if (n == NEXT_WIN)       H[k][j] = win_val == 1.0 ? one : 0;
+            else if (n == NEXT_LOSS) H[k][j] = win_val == 1.0 ? 0 : one;
+            else                     H[k][j] = subm(one, atom_hash(DOM_STATE, n, j));
+        }
+    }
+    for (int r = 0; r < 2; ++r) {
+        for (int sz = NUM_DICE - 1; sz >= 0; --sz)
+            for (int ki : keeps_by_size[sz]) {
+                const int* ch = add_child[ki];
+                for (int j = 0; j < NSEED; ++j) {
+                    uint64_t acc = 0;
+                    for (int f = 0; f < NUM_FACES; ++f) acc = addm(acc, H[ch[f]][j]);
+                    H[ki][j] = mulm(acc, inv6);
+                }
+            }
+        for (int di = 0; di < nc; ++di) {
+            int k = combo_keep[di];
+            double b1 = D.B1[r][k][v][l], gap = b1 - D.B2[r][k][v][l];
+            if (gap > margin) {
+                ++c.cert;
+                c.min_cert_gap = std::min(c.min_cert_gap, gap);
+                long long best = D.ID[r][k][v][l];
+                for (int j = 0; j < NSEED; ++j) R[di][j] = H[best][j];
+                continue;
+            }
+            int first = -1;
+            bool same = true;
+            for (int ki : sub_keeps[di]) {
+                if (b1 - D.KE[r][ki][v][l] > margin) continue;  // provably worse
+                if (first < 0) { first = ki; continue; }
+                for (int j = 0; j < NSEED; ++j) same &= H[ki][j] == H[first][j];
+                if (!same) break;
+            }
+            if (same) {
+                ++c.tie_form;
+                for (int j = 0; j < NSEED; ++j) R[di][j] = H[first][j];
+            } else {
+                if (gap == 0.0) ++c.unres_zero;
+                else {
+                    ++c.unres_pos;
+                    int bin = std::min(19, std::max(0, (int)std::floor(-std::log10(gap))));
+                    ++c.gap_hist[bin];
+                }
+                // The best value here is not pinned to one form: give it its own atom.
+                uint64_t id = ((uint64_t)sidx * 2 + r) * 462 + di;
+                for (int j = 0; j < NSEED; ++j) R[di][j] = atom_hash(DOM_OPAQUE, id, j);
+            }
+        }
+        for (int di = 0; di < nc; ++di)
+            for (int j = 0; j < NSEED; ++j) H[combo_keep[di]][j] = R[di][j];
     }
 }
 
@@ -499,15 +634,20 @@ struct Audit {
 };
 
 int main(int argc, char** argv) {
-    std::string in_path, out_path;
+    std::string in_path, out_path, save_f64, load_f64;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--misere") misere = true;
         else if (a == "--write" && i + 1 < argc) out_path = argv[++i];
+        else if (a == "--save-f64" && i + 1 < argc) save_f64 = argv[++i];
+        else if (a == "--load-f64" && i + 1 < argc) load_f64 = argv[++i];
         else in_path = a;
     }
     if (in_path.empty()) {
-        std::cerr << "Usage: " << argv[0] << " TABLE.bin [--misere] [--write OUT.bin]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " TABLE.bin [--misere] [--write OUT.bin]"
+                  << " [--save-f64 V.f64 | --load-f64 V.f64]" << std::endl
+                  << "  --load-f64 skips refinement; the error bound is still re-derived"
+                  << " from freshly measured residuals." << std::endl;
         return 1;
     }
 
@@ -524,6 +664,15 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::vector<double> V(Vf.begin(), Vf.end());
+    if (!load_f64.empty()) {
+        std::ifstream in(load_f64, std::ios::binary);
+        in.read(reinterpret_cast<char*>(V.data()), TOTAL_STATES * sizeof(double));
+        if (!in) {
+            std::cerr << "Cannot read " << load_f64 << std::endl;
+            return 1;
+        }
+    }
+    const int max_iters = load_f64.empty() ? MAX_ITERATIONS : 0;
 
     struct Layer { int a, b; };
     std::vector<Layer> layers;
@@ -573,7 +722,7 @@ int main(int argc, char** argv) {
         };
 
         int iters = 0;
-        for (int iter = 0; iter < MAX_ITERATIONS; ++iter) {
+        for (int iter = 0; iter < max_iters; ++iter) {
             int slot = iter % M_AA;
             double* G_slot = G_buf.data() + (long long)slot * n;
             double* F_slot = F_buf.data() + (long long)slot * n;
@@ -639,6 +788,12 @@ int main(int argc, char** argv) {
                   << "  elapsed=" << elapsed << "s" << std::endl;
     }
 
+    if (!save_f64.empty()) {
+        std::ofstream out(save_f64, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(V.data()), TOTAL_STATES * sizeof(double));
+        std::cout << "Wrote refined float64 values to " << save_f64 << std::endl;
+    }
+
     std::vector<float> Vr;
     if (!out_path.empty()) {
         Vr.assign(V.begin(), V.end());
@@ -648,8 +803,7 @@ int main(int argc, char** argv) {
 
     // Phase 2: certify every decision and audit the float32 table(s).
     std::cout << "Phase 2: certifying decisions..." << std::endl;
-    long long n_dec = 0, n_cert = 0, n_tie = 0, n_exact_tie = 0;
-    double min_gap = 1.0;
+    Classes cls;
     Audit audit_in, audit_out;
     for (size_t li = 0; li < layers.size(); ++li) {
         auto [a, b] = layers[li];
@@ -659,32 +813,19 @@ int main(int argc, char** argv) {
         // Keep values inherit the error bound of the next states (this layer or lower).
         double margin = 2.0 * eps_layer[a-1][b-1] + FP_SLACK;
 
-        #pragma omp parallel reduction(+:n_dec,n_cert,n_tie,n_exact_tie) reduction(min:min_gap)
+        #pragma omp parallel
         {
             auto D  = std::make_unique<Decisions>();
             auto Df = std::make_unique<Decisions>();
             Audit ain, aout;
+            Classes c;
             #pragma omp for schedule(dynamic, 4)
             for (int bi = 0; bi < nbatch; ++bi) {
                 int i0 = bi * BATCH;
                 int cnt = std::min(BATCH, n - i0);
                 decide_batch(&lstates[i0], cnt, V.data(), *D);
-                for (int r = 0; r < 2; ++r)
-                    for (int di = 0; di < (int)all_combos.size(); ++di) {
-                        int k = combo_keep[di];
-                        for (int i = 0; i < cnt; ++i) {
-                            double gap = D->B1[r][k][i / LANES][i % LANES]
-                                       - D->B2[r][k][i / LANES][i % LANES];
-                            ++n_dec;
-                            if (gap > margin) {
-                                ++n_cert;
-                                min_gap = std::min(min_gap, gap);
-                            } else {
-                                ++n_tie;
-                                if (gap == 0.0) ++n_exact_tie;
-                            }
-                        }
-                    }
+                for (int i = 0; i < cnt; ++i)
+                    classify_state(*D, i / LANES, i % LANES, lstates[i0 + i].idx, margin, c);
                 auto audit = [&](const std::vector<float>& T, Audit& au) {
                     decide_batch(&lstates[i0], cnt, T.data(), *Df);
                     for (int r = 0; r < 2; ++r)
@@ -706,6 +847,12 @@ int main(int argc, char** argv) {
             }
             #pragma omp critical
             {
+                cls.cert += c.cert;
+                cls.tie_form += c.tie_form;
+                cls.unres_zero += c.unres_zero;
+                cls.unres_pos += c.unres_pos;
+                for (int h = 0; h < 20; ++h) cls.gap_hist[h] += c.gap_hist[h];
+                cls.min_cert_gap = std::min(cls.min_cert_gap, c.min_cert_gap);
                 for (auto [dst, src] : {std::pair{&audit_in, &ain}, std::pair{&audit_out, &aout}}) {
                     dst->differ += src->differ;
                     dst->wrong += src->wrong;
@@ -721,11 +868,17 @@ int main(int argc, char** argv) {
               << "V(start) = " << V[state_index(start)]
               << std::scientific << std::setprecision(2) << "  +/- " << eps_start << std::endl;
     std::cout << "Max proven error |V - V*|: " << eps_low << std::endl;
+    long long n_dec = cls.cert + cls.tie_form + cls.unres_zero + cls.unres_pos;
     std::cout << "Decisions checked: " << n_dec << std::endl;
-    std::cout << "  certified unique optimum (gap > 2*err): " << n_cert
-              << "  (smallest certified gap " << min_gap << ")" << std::endl;
-    std::cout << "  near-ties (gap <= 2*err, any listed choice within 2*err of optimal): "
-              << n_tie << "  of which exact ties: " << n_exact_tie << std::endl;
+    std::cout << "  proven: unique optimum (gap > 2*err):       " << cls.cert
+              << "  (smallest gap " << cls.min_cert_gap << ")" << std::endl;
+    std::cout << "  proven: exact tie (identical value forms):  " << cls.tie_form << std::endl;
+    std::cout << "  unresolved, computed gap exactly 0:         " << cls.unres_zero << std::endl;
+    std::cout << "  unresolved, 0 < gap <= 2*err:               " << cls.unres_pos << std::endl;
+    for (int h = 0; h < 20; ++h)
+        if (cls.gap_hist[h])
+            std::cout << "      gap in [1e-" << h + 1 << ", 1e-" << h << "): " << cls.gap_hist[h] << std::endl;
+    std::cout << "  (unresolved decisions: every candidate is within 2*err of optimal)" << std::endl;
     auto report = [&](const char* name, const Audit& au) {
         std::cout << name << ": keeps differing from refined = " << au.differ
                   << ", provably suboptimal = " << au.wrong
