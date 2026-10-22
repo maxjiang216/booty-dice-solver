@@ -206,6 +206,8 @@ Most unresolved misère cases have gaps of 1e-13 to 1e-20. These are probably ti
 
 Normal game (`logs/verify_normal_tight.log`): |V − V*| ≤ 5.2e-13 everywhere, so V(start) = 0.637692577855 ± 4.9e-13. Unresolved decisions drop from 156,417 to **557**, all with gaps of 1e-15 to 1e-12.
 
+Misère (`logs/verify_misere_tight.log`): |V − V*| ≤ 5.6e-13, so V(start) = 0.568262763853 ± 5.3e-13. Unresolved decisions drop from 63,716,242 to **5,130,588**: 191,676 with computed gap exactly 0 and 4,938,912 with gaps of 1e-18 to 1e-12. These likely need equal-value (rather than identical-form) tie arguments.
+
 *The 58 zero-gap cases* were all decisions after the 2nd throw. In each, the top two keeps had identical forms (a proven tie), and a third keep trailed by 1.5e-11 to 1.75e-9, inside the old margin. The ties come from no-op dice:
 - With the opponent at **0 doubloons**, Jolly Roger steals nothing and Shipwreck (X≥3) takes nothing. On rolls like XXXXJS, keeping XXX+J and keeping XXXX are interchangeable (51 cases).
 - With the opponent at **≤2 doubloons** and the **war chest empty**, a second J and extra Shields are both no-ops, so JCSSS ≡ JJCSS on JJCSSS (7 cases).
