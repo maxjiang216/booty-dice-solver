@@ -10,3 +10,4 @@ sim_misere
 
 # Re-run logs (not the reference logs in logs/)
 logs/solver_*_new.log
+verify

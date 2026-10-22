@@ -1,9 +1,9 @@
 CXX      = g++
 CXXFLAGS = -O3 -std=c++17 -march=native -Wall -Wextra -fopenmp
 
-.PHONY: all solver cli sim solver_misere sim_misere clean
+.PHONY: all solver cli sim solver_misere sim_misere verify clean
 
-all: solver cli sim solver_misere sim_misere
+all: solver cli sim solver_misere sim_misere verify
 
 solver: src/booty_dice_solver.cpp
 	$(CXX) $(CXXFLAGS) -o solver src/booty_dice_solver.cpp
@@ -20,5 +20,8 @@ solver_misere: src/booty_dice_solver_misere.cpp
 sim_misere: src/booty_dice_sim_misere.cpp
 	$(CXX) $(CXXFLAGS) -o sim_misere src/booty_dice_sim_misere.cpp
 
+verify: src/booty_dice_verify.cpp
+	$(CXX) $(CXXFLAGS) -o verify src/booty_dice_verify.cpp
+
 clean:
-	rm -f solver cli sim solver_misere sim_misere
+	rm -f solver cli sim solver_misere sim_misere verify
