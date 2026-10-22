@@ -254,7 +254,7 @@ static int add_child[924][NUM_FACES];   // K + e_f  (unused when |K| == 6)
 static int sub_parent[924][NUM_FACES];  // K - e_f  (K itself when c_f == 0)
 static int combo_keep[462];             // keep index of the full 6-dice combo
 static std::vector<int> keeps_by_size[NUM_DICE + 1];
-static float roll_prob[462];            // P(fresh roll of 6 dice == combo)
+static double roll_prob[462];           // P(fresh roll of 6 dice == combo), exact
 // face_steps[f] = (K, K - e_f) for keeps with c_f > 0, smallest keeps first.
 // Taking the running max one face at a time merges two disjoint sets at each
 // step (they differ in c_f), so the top two values stay exact without ids.
@@ -275,7 +275,14 @@ void build_lattice() {
     }
     for (int di = 0; di < (int)all_combos.size(); ++di)
         combo_keep[di] = keep_key_map[combo_key(all_combos[di])];
-    for (const auto& e : T_sparse[empty_keep_idx]) roll_prob[e.di] = e.prob;
+    // Multinomial 6! / prod(c_f!) / 6^6 in double; the float32 T_sparse
+    // probabilities sum to 1 + ~1e-8, which would floor the residual there.
+    static const int fact[NUM_DICE + 1] = {1, 1, 2, 6, 24, 120, 720};
+    for (int di = 0; di < (int)all_combos.size(); ++di) {
+        int ways = fact[NUM_DICE];
+        for (int f = 0; f < NUM_FACES; ++f) ways /= fact[all_combos[di].c[f]];
+        roll_prob[di] = ways / 46656.0;
+    }
     for (int f = 0; f < NUM_FACES; ++f)
         for (int sz = 1; sz <= NUM_DICE; ++sz)
             for (int ki : keeps_by_size[sz])
