@@ -6,8 +6,8 @@ Computes the exact optimal strategy for the 2-player board game **Booty Dice** v
 
 | Variant | First-mover win rate | Compute time | Iterations |
 |---------|---------------------|--------------|------------|
-| Normal  | **63.8%**           | ~25 min      | 655 total layer-iters |
-| Misère  | **56.8%**           | ~16 min      | 380 total layer-iters |
+| Normal  | **63.8%**           | ~3 min (4 cores) | 655 total layer-iters |
+| Misère  | **56.8%**           | ~1.7 min (4 cores) | 380 total layer-iters |
 
 The 63.8% first-mover advantage is inherent to the game: going first lets you collect doubloons and attack before the opponent can respond. No equal starting-shield configuration reduces this below ~61.7%; starting the second player with 11 doubloons instead of 5 brings it to ~50.3%.
 
@@ -34,7 +34,7 @@ make clean        # remove compiled binaries (does NOT delete .bin tables)
 
 ---
 
-## Step 1 — Solve (run once, ~25 min each)
+## Step 1 — Solve (run once, ~2–3 min each on 4 cores)
 
 ```bash
 ./solver           # writes booty_dice_optimal.bin  (~229 MB)

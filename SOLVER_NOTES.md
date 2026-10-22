@@ -75,7 +75,18 @@ Step 5: roll1_ev[d] = max_{K ⊆ d} keep_ev[K]    (best keep after first roll)
 Step 6: V_new(S) = Σ_d T[∅][d] · roll1_ev[d]   (expected value rolling all 6 fresh)
 ```
 
-T is a sparse 924×462 matrix (12,376 non-zeros, 2.9% dense) precomputed once at startup.
+T is a sparse 924×462 matrix (12,376 non-zeros, 2.9% dense). The solver never multiplies by it directly; see *Fast Turn Kernel* below.
+
+### Fast Turn Kernel
+
+The original implementation ran steps 2–5 literally (sparse matvecs plus a scan of every sub-keep of every roll), ~46 µs per state single-threaded. The current kernel computes the same values ~27× faster (~1.7 µs/state):
+
+1. **Reroll one die at a time.** Keeps form a lattice under adding a die. Because dice are independent, `keep_ev[K] = (1/6) Σ_f keep_ev[K + e_f]`, evaluated from size-5 keeps down to the empty keep, with size-6 keeps holding the roll values. That's 462×6 adds instead of 12,376 multiply-adds.
+2. **Running max over sub-keeps.** `best[K] = max(keep_ev[K], max_f best[K − e_f])`, evaluated from small keeps up, gives `max_{K ⊆ d} keep_ev[K]` at every roll d in 923×6 maxes instead of 12,376 compare-and-branch steps.
+3. **Branch-free resolution.** Each combo's effect is precomputed as per-face parameters (gold, X loss, steal, cutlass, plank, shield, mutiny, shipwreck); Blackbeard's Curse becomes mutiny=2, shipwreck=5. Resolving a state is then min/subtract arithmetic with no early returns.
+4. **SIMD across states.** All of the above is identical for every state, so 16 states go through it together as two 8-wide float/int vectors (GCC vector extensions; AVX2 or wider).
+
+Over all 31M states of the converged table, the new kernel matches the original to within 5.5e-6 (float summation order), and both solvers reproduce the original per-layer iteration counts and V values exactly.
 
 ---
 
@@ -121,7 +132,7 @@ Three fixes:
 
 3. **Relaxed convergence threshold:** 1e-4 instead of 1e-6. A 0.01% error in win probability has zero effect on strategy (the optimal keep is unchanged for any state where the win probabilities of competing options differ by more than the rounding error). With ρ = 0.999 and threshold 1e-4, Anderson(10) converges in ~10–12 iterations instead of ~1,000.
 
-**Result:** All 55 layers converge in 7–13 iterations each. Total compute: 1,469s (~24.5 min) on a 20-thread machine.
+**Result:** All 55 layers converge in 7–13 iterations each. Total compute: 172s on 4 cores with the fast turn kernel (originally 1,469s on 20 threads).
 
 ---
 
@@ -129,12 +140,12 @@ Three fixes:
 
 ```
 main()
- ├─ build_dice_tables()          enumerate 462 combos, 924 keeps; build T_sparse
+ ├─ build_dice_tables()          enumerate 462 combos, 924 keeps
  ├─ build_transition_matrix()    sparse T[keep → combo] with multinomial probs
  ├─ for each layer {a,b}:
  │   ├─ build lstates[]          flat list of (flat_index, State) for this layer
  │   └─ for iter = 0..MAX_ITERS:
- │       ├─ Jacobi sweep (OMP)   G_slot[i] = compute_turn_value(s, V)
+ │       ├─ Jacobi sweep (OMP)   G_slot[i] = turn_values_batch(16 states, V)
  │       │                       F_slot[i] = G_slot[i] − V[idx]
  │       ├─ check convergence    max|F| < 1e-4 → break
  │       ├─ build Gram matrix    H[i][j] = ⟨F[slot_i], F[slot_j]⟩  (serial)
@@ -145,7 +156,7 @@ main()
 
 **Memory layout:** Anderson history buffers are slot-major: `G_buf[slot * n + i]`. This gives sequential writes during the Jacobi sweep (one slot at a time) and acceptable scatter-gather during the mixing step.
 
-**OpenMP:** the Jacobi sweep is the bottleneck (462 V lookups + ~40K FLOPs per state). Each layer iteration for a 620K-state layer takes ~2.2s on 20 threads.
+**OpenMP:** the Jacobi sweep is the bottleneck (462 V lookups + ~11K vector ops per 16-state batch), parallelised over batches. The Anderson Gram-matrix dot products are parallelised too. Each layer iteration for a 620K-state layer takes ~0.3s on 4 cores.
 
 ---
 
@@ -241,8 +252,8 @@ The subtlest reversal: **Jolly Roger is bad in misère** — you're taking doubl
 
 ## Compute Environment
 
-- Machine: 20-thread x86-64, Linux
+- Machine: 4-core x86-64 (AVX-512 capable), Linux
 - Compiler: g++ -O3 -std=c++17 -march=native -fopenmp
-- Normal solver: 1,469s (~24.5 min), 655 total layer-iters
-- Misère solver: 948s (~15.8 min), 380 total layer-iters
+- Normal solver: 172s (~2.9 min), 655 total layer-iters (originally 1,469s on 20 threads)
+- Misère solver: 102s (~1.7 min), 380 total layer-iters (originally 948s on 20 threads)
 - RAM peak: ~700 MB (229 MB V-table + ~50 MB Anderson buffers + misc)
